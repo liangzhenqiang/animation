@@ -1,0 +1,273 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>animate</title>
+		<style>
+			html, body{padding:0; margin:0;}
+			.graphic:after{content:"."; display:block; visibility:hidden; clear:both; font-size:0; height:0;}
+			.graphic canvas{width:400px; height:400px; float:left; display:block;}
+		</style>
+		<script>
+			function Ball(radius){
+				this.radius = radius || 40;
+				this.x = 0;
+				this.y = 0;
+				this.rotation = 0;
+				this.scaleX = 1;
+				this.scaleY = 1;
+				this.draw = function(context){
+					context.save();
+					context.translate(this.x, this.y);
+					context.rotate(this.rotation);
+					context.scale(this.scaleX, this.scaleY);
+					context.lineWidth = 1;
+					context.fillStyle = "#f00";
+					context.beginPath();
+					//arc
+					context.arc(0, 0, this.radius, 0, Math.PI * 2, true);
+					context.closePath();
+					context.fill();
+					//context.stroke();
+					context.restore();
+				};
+			}
+			function parseColorToRGB(color, alpha){
+				if(typeof color === "string" && color[0] === "#"){
+					color = parseInt(color.slice(1), 16);
+				}
+				alpha = (typeof alpha === "undefined") ? 1 : alpha;
+				var r = color >> 16 & 0xFF,
+					g = color >> 8 & 0xFF,
+					b = color & 0xFF,
+					a = Math.min(Math.max(0, alpha), 1);
+				return alpha === 1
+					? "rgb(" + r + "," + g + "," + b + ")"
+					: "rgba(" + r +"," + g + "," + b + "," + a + ")";
+			}
+			document.addEventListener("DOMContentLoaded", function(){
+				/*
+				 * atan2与旋转
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						x = canvas.width / 2,
+						y = canvas.height / 2,
+						rotation = 0;
+					//draw
+					function draw(){
+						context.save();
+						context.translate(x, y);
+						context.rotate(rotation);
+						context.lineWidth = 2;
+						context.fillStyle = "#ff0";
+						context.beginPath();
+						context.moveTo(-10, -5);
+						context.lineTo(0, -5);
+						context.lineTo(0, -10);
+						context.lineTo(10, 0);
+						context.lineTo(0, 10);
+						context.lineTo(0, 5);
+						context.lineTo(-10, 5);
+						context.lineTo(-10, -5);
+						context.closePath();
+						context.fill();
+						context.stroke();
+						context.restore();
+					}
+					draw();
+					var mouse = {"x": 0, "y": 0};
+					canvas.addEventListener("mousemove", function(e){
+						mouse.x = Math.max(e.pageX, e.clientX + Math.max(document.body.scrollLeft, document.documentElement.scrollLeft));
+						mouse.y = Math.max(e.pageY, e.clientY + Math.max(document.body.scrollTop, document.documentElement.scrollTop));
+						mouse.x -= this.offsetLeft;
+						mouse.y -= this.offsetTop;
+					}, false);
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						var dx = mouse.x - x,
+							dy = mouse.y - y;
+						//atan2
+						rotation = Math.atan2(dy, dx);//注意坐标顺序
+						draw();
+					})();
+				})(document.getElementById("atanRotate"));
+				/*
+				 * 平滑上下运动（sin）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(10),
+						angle = 0;
+					ball.x = canvas.width / 2;
+					ball.y = canvas.height / 2;
+
+					var speed = 0.05;//速度
+					var range = 50;//范围
+					var centerY = canvas.height / 2;//中心点
+					//animation
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+						//sin
+						ball.y = centerY + Math.sin(angle) * range;
+						//range会影响运动范围的远近，如果range为50，则sin * range在-50到50之间
+						//centerY影响运动的中心点
+						angle += speed;//影响运动速度，因为角度增加的快慢，会影响正弦值从1变到-1的速度
+						ball.draw(context);
+					})();
+				})(document.getElementById("downSmoothMove"));
+				/*
+				 * 线性垂直运动（sin）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(10);
+					ball.x = 0;
+
+					var centerY = 100;
+					var xSpeed = 1;
+					var angle = 0.5;
+					var range  = 50;
+					context.fillStyle = "#eee";
+					//animation
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+						//sin
+						if(ball.x + 10 >= canvas.width){
+							xSpeed = ~xSpeed;
+						}
+						else if(ball.x - 10 <= 0){
+							xSpeed = 1;
+						}
+						ball.x += xSpeed;
+						ball.y = centerY + Math.sin(angle) * range;
+						angle += 0.05;
+						ball.draw(context);
+					})();
+				})(document.getElementById("linearVerticalMove"));
+				/*
+				 * 脉冲运动（sin）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(10);
+					ball.x = canvas.width / 2;
+					ball.y = canvas.height / 2;
+					var centerY = canvas.width / 2;
+					var angle = 0;
+					var centerScale = 1;
+					var range = 0.5;
+					var speed = 0.05;
+					//animation
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+						//sin
+						ball.scaleX = centerScale + Math.sin(angle) * range;
+						ball.scaleY = centerScale + Math.sin(angle) * range;
+						angle += speed;
+						ball.draw(context);
+					})();
+				})(document.getElementById("pulseMove"));
+				/*
+				 * 产生波（sin）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(10);
+
+					var range = 50;
+					var centerX = canvas.width / 2;
+					var centerY = canvas.width / 2;
+					var angleX = 0;
+					var angleY = 0;
+					var xSpeed = 0.05;
+					var ySpeed = 0.11;
+					//animation
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						//sin
+						ball.x = centerX + Math.sin(angleX) * range;
+						ball.y = centerY + Math.sin(angleY) * range;
+						angleX += xSpeed;
+						angleY += ySpeed;
+						ball.draw(context);
+					})();
+				})(document.getElementById("bringWaveMove"));
+				/*
+				 * 产生波（sin）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(10);
+
+					var centerY = canvas.height / 2;
+					var x = 0;
+					var y = centerY;
+					var range = 50;
+					var angle = 0;
+					var xSpeed = 1;
+					var ySpeed = 0.05;
+					//animation
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+
+						context.beginPath();
+						context.moveTo(x, y);
+						x += xSpeed;
+						angle += ySpeed;
+						//sin
+						y = centerY + Math.sin(angle) * range;
+						context.lineTo(x, y);
+						context.stroke();
+					})();
+				})(document.getElementById("bringWaveMove2"));
+				/*
+				 * 圆周运动（sin）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(10);
+
+					var centerX = canvas.width / 3;
+					var centerY = canvas.height / 3;
+					var radius = 50;
+					var angle = 0;
+					var speed = 0.02;
+					context.fillStyle = "#eee";
+					//animation
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+						//sin & cos
+						ball.x = centerX + Math.sin(angle) * radius;//不同参数可变椭圆
+						ball.y = centerY + Math.cos(angle) * radius;//使用半径上下沿（y轴）和前后沿（x轴）运动的范围是一致，是一个完美的圆
+						angle += speed;
+						ball.draw(context);
+					})();
+				})(document.getElementById("circularMotion"));
+			}, false);
+		</script>
+	</head>
+	<body>
+		<div class="graphic">
+			<div class="trig">
+				<canvas id="atanRotate"></canvas>
+				<canvas id="downSmoothMove"></canvas>
+				<canvas id="linearVerticalMove"></canvas>
+				<canvas id="pulseMove"></canvas>
+				<canvas id="bringWaveMove"></canvas>
+				<canvas id="bringWaveMove2"></canvas>
+				<canvas id="circularMotion"></canvas>
+			</div>
+		</div>
+	</body>
+</html>

@@ -1,0 +1,792 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>easing</title>
+		<style>
+			html, body {
+			    position: absolute;
+			    width: 100%;
+			    height: 100%;
+			    min-width: 800px;
+			    min-height: 545px;
+			    margin: 0 0;
+			    font-family: 'Lato', sans-serif;
+			    background-color: #181818;
+			}
+			#app {
+			    position: relative;
+			    width: 100%;
+			    height: 100%;
+			    overflow: hidden;
+			}
+			.block {
+			  position: absolute;
+			  left: 0;
+			  top: 0;
+			  color: #fff;
+			  text-align: center;
+			  line-height: 40px;
+			  font-size: 14px;
+			}
+		</style>
+		<script type="text/javascript">
+			var speakUtils = (function(exports) {
+
+		    var undef;
+
+		    var _slice = Array.prototype.slice;
+
+		    function mixIn(base, args) {
+		        var i, len, j, target;
+		        args = _slice.call(arguments, 1);
+		        for( i = 0, len = args.length; i < len; i++ ) {
+		            target = args[i];
+		            for( j in target ) {
+		                if(target[j] !== undef) {
+		                    base[j] = target[j];
+		                }
+		            }
+		        }
+		        return base;
+		    }
+
+		    function bind(func, context, args) {
+		        args = _slice.call(arguments, 2);
+		        return function(arg2) {
+		            args2 = _slice.call(arguments, 0);
+		            func.apply(context, args.concat(args2));
+		        };
+		    }
+
+		    function getBustedUrl(url) {
+		         //not safe but kind of ok
+		        return url + (url.indexOf('?') > -1 ? '&' : '?') + '=' + (+ new Date);
+		    }
+
+		    function loadAudioFile(url, cb, isBusted) {
+		        var audio = document.createElement('audio');
+		        // audio.crossOrigin = 'Anonymous';
+		        audio.src = url;
+		        audio.addEventListener('canplaythrough', bind(cb, audio, audio), false);
+		        audio.load();
+		    }
+
+		    function loadTextFile(url, cb, isBusted) {
+		        if(isBusted === undef ? true : isBusted) url = getBustedUrl(url);
+
+		        // who cares about old IE :D
+		        var xmlhttp = new XMLHttpRequest();
+		        xmlhttp.onreadystatechange = bind(_onXmlHttpChange, xmlhttp, cb);
+		        xmlhttp.open('GET', url, true);
+		        xmlhttp.send(null);
+		    }
+
+		    function loadImage(url, cb, isBusted) {
+		        if(isBusted === undef ? true : isBusted) url = getBustedUrl(url);
+
+		        var img = new Image();
+		        // img.crossOrigin = 'Anonymous';
+		        img.src = url;
+		        if(img.width) {
+		            cb(img, img);
+		        } else {
+		            img.onload = bind(cb, img, img);
+		        }
+		    }
+
+		    function _onXmlHttpChange(cb) {
+		        if (this.readyState == 4) {
+		            if (this.status == 200) {
+		                cb(this.responseText);
+		            } else {
+		                console.error('not working');
+		            }
+		        }
+		    }
+
+		    // items: [{url: string, type: string}]
+		    function preload(items, onLoading, isBusted) {
+		        var item, func;
+		        items.contents = items.contents = {};
+		        for(var i = 0, len = items.length; i < len; i++) {
+		            item = items[i];
+		            switch(item.type) {
+		                case 'text':
+		                    func = loadTextFile;
+		                    break;
+		                case 'image':
+		                    func = loadImage;
+		                    break;
+		                case 'audio':
+		                    func = loadAudioFile;
+		                    break;
+		                default:
+		                    console.error('type missing');
+		                    break;
+		            }
+		            func(item.url, bind(_onItemLoad, items, onLoading, i));
+		        }
+		    }
+
+		    function _onItemLoad(onLoading, index, content) {
+		        var item = this[index];
+		        item.content = content;
+		        item.isLoaded = true;
+		        this.contents[item.id === undef ? item.url : item.id] = content;
+		        var loadedCount = 0;
+		        for(var i = 0, len = this.length; i < len; i++) {
+		            if(this[i].isLoaded) loadedCount++;
+		        }
+		        onLoading(loadedCount / len, this);
+		    }
+
+		    function addImageDropListener(target, cb) {
+		        target.addEventListener('dragover', _preventDefault);
+		        target.addEventListener('drop', bind(_onImageDrop, target, cb));
+		    }
+
+		    function _preventDefault(evt) {
+		        evt.preventDefault();
+		    }
+
+		    function _onImageDrop(cb, evt) {
+		        evt.preventDefault();
+		        var files = evt.dataTransfer.files;
+		        var i = files.length;
+		        while(i--) {
+		            if(files[i].type.indexOf('image') == -1) {
+		                [].splice.call(files, i, 1);
+		            }
+		        }
+		        if(files.length == 1) {
+		            reader = new FileReader();
+		            reader.onload = bind(_onImageDropDataURLLoad, reader, cb);
+		            reader.readAsDataURL(files[0]);
+		        }
+		    }
+
+		    function _onImageDropDataURLLoad(cb, evt){
+		        var img = new Image();
+		        img.src = evt.target.result;
+		        if(img.width) {
+		            cb.call(img);
+		        } else {
+		            img.onload = cb;
+		        }
+		    }
+
+		    exports.mixIn = mixIn;
+		    exports.bind = bind;
+		    exports.loadTextFile = loadTextFile;
+		    exports.loadImage = loadImage;
+		    exports.preload = preload;
+		    exports.addImageDropListener = addImageDropListener;
+
+		    return exports;
+
+		}({}));
+		</script>
+		<script type="text/javascript">
+			var EaseBlock = (function(exports) {
+
+		    var undef;
+
+		    function EaseBlock() {}
+
+		    function init(cfg) {
+		        speakUtils.mixIn(this, {
+		            id: '',
+		            x: 0,
+		            y: 0,
+		            func: undef,
+		            baseColor: '#29282a',
+		            lineBaseColor: '#525152',
+		            color: '#f96e6e',
+		            lineWidth: 3,
+		            boxWidth: 360,
+		            boxHeight: 240,
+		            // font: '14px Lato',
+		            textColor: '#fff',
+		            animation: 0
+		        }, cfg);
+
+		        this.container = document.createElement('div');
+		        this.container.className = 'block';
+		        this.containerStyle = this.container.style;
+		        this.container.innerHTML = this.id;
+		    }
+
+		    EaseBlock.width = 360;
+		    EaseBlock.height = 240;
+		    EaseBlock.topHeight = 35;
+		    EaseBlock.boxWidth = 360;
+		    EaseBlock.boxHeight = 240;
+		    EaseBlock.seg = 100;
+		    EaseBlock.bottomHeight = 10;
+		    EaseBlock.cubeRadius = 10;
+		    EaseBlock.cubePadding = 10;
+		    EaseBlock.circleRadius = 30;
+		    EaseBlock.TYPES = ['line', 'block', 'cube', 'circle'];
+		    EaseBlock.type = 'line';
+
+		    function render(ctx) {
+		        var ratio;
+		        var width = EaseBlock.width;
+		        var height = EaseBlock.height;
+		        var topHeight = EaseBlock.topHeight;
+		        var boxWidth = EaseBlock.boxWidth;
+		        var boxHeight = EaseBlock.boxHeight;
+		        var cubeRadius = EaseBlock.cubeRadius;
+		        var cubePadding = EaseBlock.cubePadding;
+		        var circleRadius = EaseBlock.circleRadius;
+		        var seg = EaseBlock.seg;
+
+		        var animation = this.animation;
+		        var ease = this.func;
+		        ctx.save();
+
+		        ctx.save();
+
+		        if(EaseBlock.type == 'line') {
+
+		            ctx.translate(0, topHeight);
+		            ctx.fillStyle = this.baseColor;
+		            ctx.fillRect(0, 0, boxWidth, boxHeight);
+
+		            ctx.strokeStyle = this.lineBaseColor;
+		            ctx.lineWidth = this.lineWidth;
+		            ctx.beginPath();
+		            ctx.moveTo(0, boxHeight);
+		            for(var i = 1, len = seg; i < len; i++) {
+		                ratio = i / (seg - 1);
+		                ctx.lineTo(ratio * boxWidth, (1 - ease(ratio)) * boxHeight);
+		            }
+		            ctx.stroke();
+		            ctx.closePath();
+
+		            ctx.strokeStyle = this.color;
+		            ctx.beginPath();
+		            ctx.moveTo(0, boxHeight);
+		            for(i = 1, len = Math.round(seg * animation); i < len; i++) {
+		                ratio = i / (seg - 1);
+		                ctx.lineTo(ratio * boxWidth, (1 - ease(ratio)) * boxHeight);
+		            }
+		            ctx.stroke();
+		            ctx.closePath();
+		        } else if(EaseBlock.type == 'block') {
+		            ratio = ease(animation);
+		            ctx.translate(0, topHeight);
+		            ctx.fillStyle = this.baseColor;
+		            ctx.fillRect(0, 0, boxWidth, boxHeight);
+		            ctx.fillStyle = this.color;
+		            ctx.fillRect(0, boxHeight * (1 - ratio), boxWidth, boxHeight * ratio);
+		        } else if(EaseBlock.type == 'cube') {
+
+		            ctx.translate(cubeRadius, topHeight + boxHeight / 2);
+		            ctx.fillStyle = this.baseColor;
+		            ctx.fillRect(cubePadding -cubeRadius, -cubeRadius, (boxWidth - cubeRadius * 2 - cubePadding * 2), cubeRadius * 2);
+		            ctx.fillStyle = this.lineBaseColor;
+		            ctx.fillRect(cubePadding -cubeRadius, -cubeRadius, cubeRadius * 2, cubeRadius * 2);
+		            ctx.fillRect(cubePadding + boxWidth - cubeRadius * 3 - cubePadding * 2, -cubeRadius, cubeRadius * 2, cubeRadius * 2);
+
+		            ctx.translate(ease(animation) * (boxWidth - cubeRadius * 2 - cubePadding * 2), 0);
+		            ctx.fillStyle = this.color;
+		            ctx.fillRect(cubePadding-cubeRadius, -cubeRadius, cubeRadius * 2, cubeRadius * 2);
+		        } else {
+		            ctx.translate(boxWidth / 2, topHeight + boxHeight / 2);
+		            ctx.beginPath();
+		            ctx.fillStyle = this.baseColor;
+		            ctx.arc(0, 0, circleRadius, 0, Math.PI * 2);
+		            ctx.fill();
+		            ctx.closePath();
+		            ctx.fillStyle = this.color;
+		            ctx.beginPath();
+		            ctx.arc(0, 0, Math.max(circleRadius * ease(animation), 0), 0, Math.PI * 2);
+		            ctx.fill();
+		            ctx.closePath();
+		        }
+
+		        ctx.restore();
+
+		        // ctx.fillStyle = this.textColor;
+		        // ctx.font = this.font;
+		        // ctx.textAlign = 'center';
+		        // ctx.fillText(this.id, boxWidth / 2, 24);
+
+		        ctx.restore();
+		    }
+
+		    var _p = EaseBlock.prototype;
+
+		    _p.init = init;
+		    _p.render = render;
+
+		    return EaseBlock;
+
+		}({}));
+		</script>
+		<script type="text/javascript">
+			var easeUtils = (function(exports){
+		    function linear(e) {
+		        return e;
+		    }
+		    function easeQuadIn(e) {
+		        return e * e;
+		    }
+		    function easeQuadOut(e) {
+		        return e * (2 - e);
+		    }
+		    function easeQuadInOut(e) {
+		        if ((e *= 2) < 1) return 0.5 * e * e;
+		        return - 0.5 * (--e * (e - 2) - 1);
+		    }
+		    function easeCubicIn(e) {
+		        return e * e * e;
+		    }
+		    function easeCubicOut(e) {
+		        return --e * e * e + 1;
+		    }
+		    function easeCubicInOut(e) {
+		        if ((e *= 2) < 1) return 0.5 * e * e * e;
+		        return 0.5 * ((e -= 2) * e * e + 2);
+		    }
+		    function easeQuartIn(e) {
+		        return e * e * e * e;
+		    }
+		    function easeQuartOut(e) {
+		        return 1 - --e * e * e * e;
+		    }
+		    function easeQuartInOut(e) {
+		        if ((e *= 2) < 1) return 0.5 * e * e * e * e;
+		        return - 0.5 * ((e -= 2) * e * e * e - 2);
+		    }
+		    function easeQuintIn(e) {
+		        return e * e * e * e * e;
+		    }
+		    function easeQuintOut(e) {
+		        return --e * e * e * e * e + 1;
+		    }
+		    function easeQuintInOut(e) {
+		        if ((e *= 2) < 1) return 0.5 * e * e * e * e * e;
+		        return 0.5 * ((e -= 2) * e * e * e * e + 2);
+		    }
+		    function easeSineIn(e) {
+		        return 1 - Math.cos(e * Math.PI / 2);
+		    }
+		    function easeSineOut(e) {
+		        return Math.sin(e * Math.PI / 2);
+		    }
+		    function easeSineInOut(e) {
+		        return 0.5 * (1 - Math.cos(Math.PI * e));
+		    }
+		    function easeExpoIn(e) {
+		        return e === 0 ? 0 : Math.pow(1024, e - 1);
+		    }
+		    function easeExpoOut(e) {
+		        return e === 1 ? 1 : 1 - Math.pow(2, -10 * e);
+		    }
+		    function easeExpoInOut(e) {
+		        if (e === 0) return 0;
+		        if (e === 1) return 1;
+		        if ((e *= 2) < 1) return 0.5 * Math.pow(1024, e - 1);
+		        return 0.5 * (-Math.pow(2, -10 * (e - 1)) + 2);
+		    }
+		    function easeCircIn(e) {
+		        return 1 - Math.sqrt(1 - e * e);
+		    }
+		    function easeCircOut(e) {
+		        return Math.sqrt(1 - --e * e);
+		    }
+		    function easeCircInOut(e) {
+		        if ((e *= 2) < 1) return - 0.5 * (Math.sqrt(1 - e * e) - 1);
+		        return 0.5 * (Math.sqrt(1 - (e -= 2) * e) + 1);
+		    }
+		    function easeElasticIn(e) {
+		        var t, n =0.1,
+		            r =0.4;
+		        if (e === 0) return 0;
+		        if (e === 1) return 1;
+		        if (!n || n < 1) {
+		            n = 1;
+		            t = r / 4;
+		        } else t = r * Math.asin(1 / n) / (2 * Math.PI);
+		        return -(n * Math.pow(2, 10 * (e -= 1)) * Math.sin((e - t) * 2 * Math.PI / r));
+		    }
+		    function easeElasticOut(e) {
+		        var t, n =0.1,
+		            r =0.4;
+		        if (e === 0) return 0;
+		        if (e === 1) return 1;
+		        if (!n || n < 1) {
+		            n = 1;
+		            t = r / 4;
+		        } else t = r * Math.asin(1 / n) / (2 * Math.PI);
+		        return n * Math.pow(2, -10 * e) * Math.sin((e - t) * 2 * Math.PI / r) + 1;
+		    }
+		    function easeElasticInOut(e) {
+		        var t, n =0.1,
+		            r =0.4;
+		        if (e === 0) return 0;
+		        if (e === 1) return 1;
+		        if (!n || n < 1) {
+		            n = 1;
+		            t = r / 4;
+		        } else t = r * Math.asin(1 / n) / (2 * Math.PI);
+		        if ((e *= 2) < 1) return - 0.5 * n * Math.pow(2, 10 * (e -= 1)) * Math.sin((e - t) * 2 * Math.PI / r);
+		        return n * Math.pow(2, -10 * (e -= 1)) * Math.sin((e - t) * 2 * Math.PI / r) *0.5 + 1;
+		    }
+		    function easeBackIn(e) {
+		        var t = 1.70158;
+		        return e * e * ((t + 1) * e - t);
+		    }
+		    function easeBackOut(e) {
+		        var t = 1.70158;
+		        return --e * e * ((t + 1) * e + t) + 1;
+		    }
+		    function easeBackInOut(e) {
+		        var t = 1.70158 * 1.525;
+		        if ((e *= 2) < 1) return 0.5 * e * e * ((t + 1) * e - t);
+		        return 0.5 * ((e -= 2) * e * ((t + 1) * e + t) + 2);
+		    }
+		    function easeBounceIn(e) {
+		        return 1 - easeBounceOut(1 - e);
+		    }
+		    function easeBounceOut(e) {
+		        if (e < 1 / 2.75) {
+		            return 7.5625 * e * e;
+		        } else if (e < 2 / 2.75) {
+		            return 7.5625 * (e -= 1.5 / 2.75) * e +0.75;
+		        } else if (e < 2.5 / 2.75) {
+		            return 7.5625 * (e -= 2.25 / 2.75) * e +0.9375;
+		        } else {
+		            return 7.5625 * (e -= 2.625 / 2.75) * e +0.984375;
+		        }
+		    }
+		    function easeBounceInOut(e) {
+		        if (e <0.5) return easeBounceOut(e * 2) *0.5;
+		        return easeBounceOut(e * 2 - 1) *0.5 +0.5;
+		    }
+
+		    exports.linear = linear;
+		    exports.easeQuadIn = easeQuadIn;
+		    exports.easeQuadOut = easeQuadOut;
+		    exports.easeQuadInOut = easeQuadInOut;
+		    exports.easeCubicIn = easeCubicIn;
+		    exports.easeCubicOut = easeCubicOut;
+		    exports.easeCubicInOut = easeCubicInOut;
+		    exports.easeQuartIn = easeQuartIn;
+		    exports.easeQuartOut = easeQuartOut;
+		    exports.easeQuartInOut = easeQuartInOut;
+		    exports.easeQuintIn = easeQuintIn;
+		    exports.easeQuintOut = easeQuintOut;
+		    exports.easeQuintInOut = easeQuintInOut;
+		    exports.easeSineIn = easeSineIn;
+		    exports.easeSineOut = easeSineOut;
+		    exports.easeSineInOut = easeSineInOut;
+		    exports.easeExpoIn = easeExpoIn;
+		    exports.easeExpoOut = easeExpoOut;
+		    exports.easeExpoInOut = easeExpoInOut;
+		    exports.easeCircIn = easeCircIn;
+		    exports.easeCircOut = easeCircOut;
+		    exports.easeCircInOut = easeCircInOut;
+		    exports.easeElasticIn = easeElasticIn;
+		    exports.easeElasticOut = easeElasticOut;
+		    exports.easeElasticInOut = easeElasticInOut;
+		    exports.easeBackIn = easeBackIn;
+		    exports.easeBackOut = easeBackOut;
+		    exports.easeBackInOut = easeBackInOut;
+		    exports.easeBounceIn = easeBounceIn;
+		    exports.easeBounceOut = easeBounceOut;
+		    exports.easeBounceInOut = easeBounceInOut;
+
+		    return exports;
+
+		}({}));
+		</script>
+		<script>
+			onload = function(){
+				var app = (function(exports, undef){
+
+			    var config = {
+			        autoPlay: true,
+			        speed: 1,
+			        moveTime: 0,
+			        time: 0,
+			        wait: 0
+			    };
+
+			    var container = document.getElementById('app');
+
+			    var canvas = exports.canvas = undef;
+			    var _ctx;
+
+			    var _winWidth;
+			    var _winHeight;
+			    var _blockWidth;
+			    var _blockHeight;
+			    var _isRendering = false;
+			    var _af;
+			    var _blocks = {};
+			    var _blockList = [];
+
+			    var _numOfRows;
+
+			    var PADDING_LEFT = 50;
+			    var PADDING_RIGHT = 50;
+			    var MARGIN_X = 10;
+			    var CENTER_MARGIN_X = 30;
+			    var PADDING_TOP = 50;
+			    var PADDING_BOTTOM = 50;
+
+			    function init() {
+			        _buildCanvas();
+			        _buildBlocks();
+
+			        /*var gui = new dat.GUI();
+			        gui.add(config, 'autoPlay');
+			        gui.add(config, 'time', 0, 1).listen();
+			        gui.add(config, 'speed', 0.1, 2).listen();
+			        gui.add(EaseBlock, 'type', EaseBlock.TYPES);*/
+			        document.getElementById("type").onchange = function(){
+			        	EaseBlock.type = this.value;
+			        };
+
+			        container.addEventListener('click', _onClick);
+			        window.addEventListener('resize', onResize);
+			        onResize();
+			        startRender();
+			    }
+
+			    function _buildCanvas() {
+			        canvas = exports.canvas = document.createElement('canvas');
+			        _ctx = canvas.getContext('2d');
+			        container.appendChild(canvas);
+			    }
+
+			    function _buildBlocks() {
+			        var COLORS = ['#f96e6e', '#f9ee6e', '#6ef4f9'];
+			        var block, index;
+			        var i = 0;
+			        for(var id in easeUtils) {
+			            index = i ? (i - 1) % 6 : 0;
+			            block = _blocks[id] = new EaseBlock();
+			            block.init({
+			                id: id,
+			                color: COLORS[index % 3],
+			                func: easeUtils[id]
+			            });
+			            container.appendChild(block.container);
+			            _blockList.push(block);
+			            i++;
+			        }
+			        _numOfRows = Math.ceil((_blockList.length - 1) / 6) + 1;
+			    }
+
+			    function onResize() {
+			        _winWidth = canvas.width = container.clientWidth;
+			        _winHeight = canvas.height = container.clientHeight;
+
+			        _blockWidth = EaseBlock.width = (_winWidth - PADDING_LEFT - PADDING_RIGHT - CENTER_MARGIN_X - MARGIN_X * 5) / 6;
+			        _blockHeight = EaseBlock.height = (_winHeight - PADDING_TOP - PADDING_BOTTOM) / _numOfRows;
+
+			        EaseBlock.boxWidth = _blockWidth;
+			        EaseBlock.boxHeight = _blockHeight - EaseBlock.topHeight - EaseBlock.bottomHeight;
+			    }
+
+			    function startRender() {
+			        if(!_isRendering) {
+			            _isRendering = true;
+			            _animate();
+			        }
+			    }
+
+			    function stopRender() {
+			        if(_isRendering) {
+			            _isRendering = false;
+			            window.cancelAnimationFrame(_af);
+			        }
+			    }
+
+			    function _animate() {
+			        if(_isRendering) {
+			            _af = window.requestAnimationFrame(_animate);
+			            render();
+			        }
+			    }
+
+			    var t = 0;
+
+			    function render() {
+			        _ctx.clearRect(0, 0, _winWidth, _winHeight);
+			        if(config.moveTime < 1) {
+			            config.wait = 0;
+			            config.moveTime += 0.02 * config.speed;
+			            config.time = config.moveTime;
+			        } else if(config.autoPlay) {
+			            config.wait += 0.02;
+			            if(config.wait > 0.5) {
+			                config.time = config.moveTime = 0;
+			            }
+			        }
+			        var animation = Math.min(config.time % 1.5, 1);
+			        var block, containerStyle;
+			        var x, y, index, row, col;
+			        for(var i = 0, len = _blockList.length; i < len; ++i) {
+			            block = _blockList[i];
+			            index = i - 1;
+			            col = i ? index % 6 : 0;
+			            row = i ? ~~(index / 6) + 1 : 0;
+			            x = ~~(PADDING_LEFT + (col > 2 ? CENTER_MARGIN_X + (MARGIN_X * (col - 1)) : MARGIN_X * col) + _blockWidth * col);
+			            y = ~~(PADDING_TOP + _blockHeight * row);
+			            _ctx.save();
+			            _ctx.translate(x, y);
+			            block.animation = animation;
+			            block.render(_ctx);
+
+			            containerStyle = block.containerStyle;
+			            containerStyle.width = _blockWidth + 'px';
+			            containerStyle.height = _blockHeight + 'px';
+			            containerStyle.transform = 'translate3d(' + x + 'px,' + y + 'px,0)';
+
+			            _ctx.restore();
+			        }
+			    }
+
+			    function _onClick(evt) {
+			        config.moveTime = 0;
+			        config.time = 0;
+			    }
+
+			    exports.init = init;
+			    exports.onResize = onResize;
+			    exports.startRender = startRender;
+			    exports.stopRender = stopRender;
+			    exports.render = render;
+
+			    return exports;
+
+			}({}));
+
+			app.init();
+			};
+		</script>
+		<script type="text/javascript">
+			//计算n个数里选择k个数的组合个数
+			(function(){
+				var count = 1;
+				var n = 10,
+					k = 5;
+				k = (k > n / 2) ? n - k : k;//k太大的时候写成n - k减少计算次数
+
+				for(var i = 1; i <= k; ){
+					count = count * n / i;//防止溢出
+					--n;//(n * n-1 * n-2 * n-3) / (k * k+1 * k+2 * k+3)
+					++i;
+				}
+				console.log(count);
+			})();
+			(function(){
+				var n = 10,
+					k = 5;
+				var count = 1;
+				for(; k = n - k; )
+					count = count * n-- / k--;
+				console.log(count);
+			})();
+			//判断生成的伪随机数是否平均。“平均”是指从seed等于0开始，到再一次出现0为止，是不是1到（mod - 1）之间的所有数只出现一次
+			(function(){
+				var seed = 3,
+					mod = 5;
+				var d = 0;
+				for(var i = 1; d = (d + seed) % mod; ++i);
+
+				console.log(i == mod ? "Good" : "Bad");
+			})();
+			//线性同余法
+			(function(){
+				var seed = 3,
+					mod = 5;
+				var d = 0;
+				//辗转相除法判断最大公约数是否为1
+				for(d = mod; seed % d | mod % d--; );
+
+				console.log(d ? "Good" : "Bad");
+			})();
+			//斐波那契数列矩阵
+			(function(){
+				function mul(x, y){
+					var t = new Array(4);
+					t[0] = (x[0] * y[0] + x[1] * y[2]) % 1e4;
+					t[1] = (x[0] * y[1] + x[1] * y[3]) % 1e4;
+					t[2] = (x[2] * y[0] + x[3] * y[2]) % 1e4;
+					t[3] = (x[2] * y[1] + x[3] * y[3]) % 1e4;
+					return t;
+				}
+				var powers = [[1, 1, 1, 0]];//最初3个数列矩阵
+				for(var i = 1; i < 30; i++)
+					powers.push(mul(powers[i - 1], powers[i - 1]));
+				console.log(powers);
+
+				var matrix = [1, 0, 0, 1],
+					n = 10;
+				for(i = 0; i < 30; i++){
+					if(n & (1 << i))//计算2的幂次方值，位是1的时候就乘上矩阵
+						matrix = mul(matrix, powers[i]);
+				}
+				console.log(matrix);
+			})();
+			(function(){
+				var n = 10;
+				var a = 0,//前两项
+					b = 1;//前一项
+				//数列全体的周期性是7500的2倍
+				for(; n-- % 15000; ){
+					b += a;
+					a = (b - a) % 10000;
+				}
+				console.log(a);
+			})();
+			//三角形数据最大值
+			(function(){
+				var n = 10;
+				var list = [7, 8, 10, 2, 3, 9];
+				var data = [1, 4, 9, 3, 2, 7];
+				var max = 0;
+				for(var i = 0; i < list.length; ++i){
+					var t = 0;
+					for(var j = 0; j <= i; ++j){
+						var u = list[j];
+						list[j] = data[j] + Math.max(t, list[j]);//从下面开始往上加
+						t = u;
+
+						max = Math.max(max, list[j]);//找出处理后的最大值
+					}
+				}
+				//两层循环变一层循环
+				var j = 0, max2 = 0;
+				/*for(var i = 0; i < data.length; ++i){
+					max2 = Math.max(list[j] = data[i] + Math.max(t = list[j], t), max2);
+					if(++j > i){
+						j = 0;
+						++i;
+					}
+				}*/
+				for(var i = 0; i < data.length; i++){
+					max2 = i ? Math.max(list[j] = data[i] + Math.max(t = list[j], t), max2) : 0;
+					j = ++j >= i ? !++i : j;
+				}
+				console.log(max, max2);
+			})();
+		</script>
+	</head>
+	<body>
+		<select id="type">
+			<option value="line" selected>line</option>
+			<option value="block">block</option>
+			<option value="cube">cube</option>
+			<option value="circle">circle</option>
+		</select>
+		<div id="app"></div>
+	</body>
+</html>

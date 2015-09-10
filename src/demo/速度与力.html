@@ -1,0 +1,626 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>animate</title>
+		<style>
+			html, body{padding:0; margin:0;}
+			.graphic:after{content:"."; display:block; visibility:hidden; clear:both; font-size:0; height:0;}
+			.graphic canvas{width:900px; height:400px; float:left; display:block;}
+		</style>
+		<script>
+			function Ball(radius){
+				this.radius = radius || 40;
+				this.x = 0;
+				this.y = 0;
+				this.vx = 0;
+				this.vy = 0;
+				this.rotation = 0;
+				this.scaleX = 1;
+				this.scaleY = 1;
+				this.draw = function(context){
+					context.save();
+					context.translate(this.x, this.y);
+					context.rotate(this.rotation);
+					context.scale(this.scaleX, this.scaleY);
+					context.lineWidth = 1;
+					context.fillStyle = "#f00";
+					context.beginPath();
+					//arc
+					context.arc(0, 0, this.radius, 0, Math.PI * 2, true);
+					context.closePath();
+					context.fill();
+					//context.stroke();
+					context.restore();
+				};
+			}
+			function Ship(x, y, width, height){
+				this.x = x || 0;
+				this.y = y || 0;
+				this.width = width || 25;
+				this.height = height || 20;
+				this.rotation = 0;
+				this.isFlame = false;
+
+				this.draw = function(context){
+					context.save();
+					context.translate(this.x, this.y);
+					context.rotate(this.rotation);
+					context.lineWidth = 1;
+					context.strokeStyle = "#fff";
+
+					context.beginPath();
+					context.moveTo(10, 0);
+					context.lineTo(10, 0);
+					context.lineTo(-10, 10);
+					context.lineTo(-5, 0);
+					context.lineTo(-10, -10);
+					context.lineTo(10, 0);
+					context.stroke();
+
+					if(this.isFlame){
+						context.beginPath();
+						context.moveTo(-7.5, -5);
+						context.lineTo(-15, 0);
+						context.lineTo(-7.5, 5);
+						context.stroke();
+					}
+					context.restore();
+				}
+			}
+			function parseColorToRGB(color, alpha){
+				if(typeof color === "string" && color[0] === "#"){
+					color = parseInt(color.slice(1), 16);
+				}
+				alpha = (typeof alpha === "undefined") ? 1 : alpha;
+				var r = color >> 16 & 0xFF,
+					g = color >> 8 & 0xFF,
+					b = color & 0xFF,
+					a = Math.min(Math.max(0, alpha), 1);
+				return alpha === 1
+					? "rgb(" + r + "," + g + "," + b + ")"
+					: "rgba(" + r +"," + g + "," + b + "," + a + ")";
+			}
+			/*
+			 * 计算矩形边界
+			 */
+			function getBounds(x, y, radius){
+				return {
+					"x": x - radius,
+					"y": y - radius,
+					"width": radius * 2,
+					"height": radius * 2 
+				};
+			}
+			/*
+			 * 坐标位置是否在矩形内
+			 */
+			function containsPoint(rect, x, y){
+				return !(
+					x < rect.x ||
+					x > rect.x + rect.width ||
+					y < rect.y ||
+					y > rect.y + rect.height
+				);
+			}
+			document.addEventListener("DOMContentLoaded", function(){
+				/*
+				 * 速度向量
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						vx = 0,
+						vy = 0,
+						vr = 0,
+						thrust = 0,
+						ship = new Ship(100, 40);
+					var angle = 45;
+					var speed = 1;
+
+					context.fillStyle = "#000";
+					context.fillRect(0, 0, canvas.width, canvas.height);
+
+					/*context.fillStyle = "#fff"
+					context.beginPath();
+					for(var i = 0; i < (Math.random() * 10) + 1; i++){
+						var rx = Math.random() * canvas.width,
+							ry = Math.random() * (canvas.height / 2);
+						context.moveTo(rx, ry);
+						context.arc(rx, ry, ~~(Math.random() * 2) + .5, 0, Math.PI * 2, true);
+					}
+					context.fill();*/
+					ship.draw(context);
+
+					window.addEventListener("keydown", function(e){
+						switch(e.keyCode){
+							case 37:
+								vr = -3;
+							break;
+							case 39:
+								vr = 3;
+							break;
+							case 38:
+								thrust = 0.05;
+								ship.isFlame = true;
+							break;
+						}
+						return false;
+					}, false);
+					window.addEventListener("keyup", function(e){
+						vr = 0;
+						vx = vy = 0;
+						thrust = 0;
+						ship.isFlame = false;
+						return false;
+					}, false);
+
+					var mouse = {"x": 0, "y": 0};
+					canvas.addEventListener("mousemove", function(e){
+						mouse.x = Math.max(e.pageX, e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft);
+						mouse.y = Math.max(e.pageY, e.clientY + document.body.scrollTop, document.documentElement.scrollTop);
+						mouse.x -= this.offsetLeft;
+						mouse.y -= this.offsetTop;
+					}, false);
+
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						//context.clearRect(0, 0, 100, 240);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						//ship.rotation += vr * Math.PI / 180;
+
+						/*
+						 * 速度向量
+						 */
+						/*vx = 1;
+						vy = 1;*/
+
+						/*
+						 * 角速度向量
+						 */
+						//angle = 180;//方向
+						/*vx = Math.cos(angle * Math.PI / 180) * speed;
+						vy = Math.sin(angle * Math.PI / 180) * speed;*/
+
+						/*
+						 * 角度加速度
+						 */
+						/*var dx = mouse.x - ship.x,
+							dy = mouse.y - ship.y,
+							angle = Math.atan2(dy, dx);//计算鼠标与箭头的夹角
+						vx = Math.cos(angle) * speed;
+						vy = Math.sin(angle) * speed;*/
+						//ship.rotation = angle;
+
+						/*
+						 * 加速度
+						 */
+						/*vx += vr / 100;
+						vy += vr / 200;*/
+
+						/*
+						 * 重力加速度
+						 */
+						/*vx += vr / 100;
+						vy += vr / 200;
+						vy += 0.02;//重力*/
+
+						/*
+						 * 角加速度
+						 */
+						var force = 0.001,
+							dx = mouse.x - ship.x,
+							dy = mouse.y - ship.y,
+							angle = Math.atan2(dy, dx),//夹角
+							ax = Math.cos(angle) * force,
+							ay = Math.sin(angle) * force;
+						vx += ax;
+						vy += ay;
+						ship.rotation = angle;
+						
+						//draw
+						ship.x += vx;
+						ship.y += vy;
+						ship.draw(context);
+					})();
+				})(document.getElementById("shipSim"));
+				/*
+				 * 拖拽运动（边界）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(10),
+						isDown = false,
+						mouse = {"x": 0, "y": 0};
+
+					ball.x = canvas.width / 2;
+					ball.y = canvas.height / 2;
+
+					var vx = Math.random() * 10 - 5;//向量
+					var vy = -10;
+					var gravity = 0.2;//重力
+					var bounce = -0.7;//摩擦力
+
+					context.fillStyle = "#EEE";
+					canvas.addEventListener("mousedown", function(e){
+						oldX = ball.x;
+						oldY = ball.y;
+						canvas.addEventListener("mousemove", function(e){
+							mouse.x = e.pageX || e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+							mouse.y = e.pageY || e.clientY + document.body.scrollTop + document.documentElement.scrollTop;
+							mouse.x = mouse.x - this.offsetLeft;
+							mouse.y = mouse.y - this.offsetTop;
+						}, false);
+						console.log(mouse.x, mouse.y,getBounds( ball.x, ball.y, ball.radius), containsPoint(getBounds(ball.x, ball.y, ball.radius), mouse.x, mouse.y));
+						if(containsPoint(getBounds(ball.x, ball.y, ball.radius), mouse.x, mouse.y) || 1){
+							isDown = true;
+							canvas.addEventListener("mousemove", onMove, false);
+							canvas.addEventListener("mouseup", onMove, false);
+						}					
+					}, false);
+					function onMove(e){
+						ball.x = mouse.x;
+						ball.y = mouse.y;
+					}
+					function checkBoundaries(){
+						vy += gravity;
+
+						ball.x += vx;
+						ball.y += vy;
+
+						var left = top = 0;
+						var right = canvas.width;
+						var bottom = canvas.height;
+
+						if(ball.x + ball.radius > right){
+							vx *= bounce;
+							ball.x = right - ball.radius;
+						}
+						else if(ball.x - ball.radius < left){
+							ball.x = left + ball.radius;
+							vx *= bounce;
+						}
+
+						if(ball.y + ball.radius > bottom){
+							ball.y = bottom - ball.radius;
+							vy *= bounce;
+						}
+						else if(ball.y - ball.radius < top){
+							ball.y = top + ball.radius;
+							vy *= bounce;
+						}
+					}
+					function trackVelocity(){
+						vx = ball.x - oldX;
+						vy = ball.y - oldY;//获取当前的速度向量
+						oldX = ball.x;//更新当前位置
+						oldY = ball.y;
+					}
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						if(isDown){
+							trackVelocity();
+						}
+						else{
+							checkBoundaries();
+						}
+						ball.draw(context);
+					})();
+				})(document.getElementById("dragAndMove"));
+				/*
+				 * 缓动
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(10);
+					ball.x = 10;
+					ball.y = 10;
+
+					var easing = 0.05;//比例系数，一个小于1且大于0的小数
+					var targetX = canvas.width - ball.radius;
+					var targetY = canvas.height - ball.radius;//确定目标点
+
+					context.fillStyle = "#000";
+					//draw
+					(function drawFrame(){
+						var raf = requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						/*var dx = targetX - ball.x,
+							dy = targetY - ball.y;//计算出物体与目标点的距离
+						var vx = dx * easing,
+							vy = dy * easing;//计算速度，速度 = 距离 X 比例系数
+						ball.x += vx;
+						ball.y += vy;//用当前位置加上速度来计算新的位置*/
+
+						//停止缓动方式（芝诺悖论，物体永远到不了目标点）
+						var dx = targetX - ball.x;
+						if(Math.abs(dx) < 1){
+							ball.x = targetX; //快到或超过的时候直接赋值
+							cancelAnimationFrame(raf);
+						}else{
+							var vx = dx * easing;
+							ball.x += vx;
+						}
+						ball.draw(context);
+					})();
+				})(document.getElementById("easing"));
+				/*
+				 * 边界（移除物体）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						balls = [];
+
+					var gravity = 0.05;//重力
+					var vx = Math.random() * 10 - 5;
+					var vy = Math.random() * 10 - 5;//速度向量
+					var bounce = -0.7;//能量损耗
+					var friction = 0.1;//摩擦力
+
+					for(var i = 0; i < 1; i++){
+						var ball = new Ball(Math.random() * 20);
+						/*ball.x = Math.random() * canvas.width;
+						ball.y = Math.random() * canvas.height;
+						ball.vx = Math.random() * 2 - 1;
+						ball.vy = Math.random() * 2 - 1;*/
+						ball.x = Math.random() * canvas.width;
+						ball.y = canvas.height;
+						ball.vx = Math.random() * 2 - 1;
+						ball.vy = Math.random() * -10 - 10;
+						balls.push(ball);
+					}
+					function draw(ball, i){
+						//ball.vx += gravity;
+						ball.x += vx;//ball.vx;
+						ball.y += vy;//ball.vy;
+						if(ball.x + ball.radius > canvas.width
+							|| ball.x + ball.radius < 0
+							|| ball.y - ball.radius > canvas.height
+							|| ball.y + ball.radius < 0){
+							/*
+							 * 移除
+							 */
+							//balls.splice(i, 1);
+							/*
+							 * 重置
+							 */
+							/*ball.x = canvas.width / 2;
+							ball.y = canvas.height;
+							ball.vx = Math.random() * 2 - 1;
+							ball.vy = Math.random() * -10 - 10;*/
+							if(balls.length > 0){
+
+							}
+							else{
+								console.log("balls is empty");
+							}
+						}
+
+						/*
+						 * 环绕
+						 */
+						/*if(ball.x - ball.radius > canvas.width){
+							ball.x = 0 - ball.radius;
+						}
+						else if(ball.x + ball.radius < 0){
+							ball.x = canvas.width + ball.radius;
+						}
+						if(ball.y - ball.radius > canvas.height){
+							ball.y = 0 - ball.radius;
+						}
+						else if(ball.y < 0 - ball.radius){
+							ball.y = canvas.height + ball.radius;
+						}*/
+
+						/*
+						 * 反弹
+						 */
+						if(ball.x + ball.radius > canvas.width){
+							ball.x = canvas.width - ball.radius;
+							vx *= bounce;
+						}
+						else if(ball.x - ball.radius < 0){
+							ball.x = 0 + ball.radius;
+							vx *= bounce;
+						}
+						if(ball.y + ball.radius > canvas.height){
+							ball.y = canvas.height - ball.radius;
+							vy *= bounce;
+						}
+						else if(ball.y - ball.radius < 0){
+							ball.y = 0 + ball.radius;
+							vy *= bounce;
+						}
+
+						/*
+						 * 摩擦力
+						 */
+						var speed = Math.sqrt(vx * vx + vy * vy),//将角速度分解为速度和向量
+							angle = Math.atan2(vy, vx);
+						//速度减去摩擦力，但是不能将速度为负值，这样会逆转速度向量
+						if(speed > friction){
+							speed -= friction;
+						}
+						else{
+							speed = 0;
+						}
+						//将角速度转回
+						vx = Math.cos(angle) * speed;
+						vy = Math.sin(angle) * speed;
+						//节省不必要的计算
+						if(Math.abs(vx) > 0.001 || Math.abs(vy) > 0.001){
+							ball.x += vx;
+							ball.y += vy;
+						}
+
+						ball.draw(context);
+					}
+					//draw
+					context.fillStyle = "#eee";
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						var length = balls.length;
+						while(length--){
+							draw(balls[length], length);
+						}
+					})();
+				})(document.getElementById("removal"));
+				/*
+				 * 弹动
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(10);
+					ball.y = canvas.height;
+
+					var targetX = canvas.width - ball.radius;
+					var targetY = canvas.height / 2;
+					var vx = vy = 0;
+					var spring = 0.01;//弹动
+					var friction = 0.95;//摩擦力
+					//draw
+					/*(function drawFrame(){
+						var raf = requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						var dx = targetX - ball.x,//计算物体到目标点的距离
+							ax = dx * spring;//计算加速度，加速度与距离是成比例的
+						vx += ax;
+						vy += (targetY - ball.y) * spring;
+
+						//判断是否停止
+						if(Math.abs(vx) > 0.001){
+							vx *= friction;//加入摩擦力让其停止
+							vy *= friction;
+							ball.x += vx;
+							ball.y += vy;
+						}
+						ball.draw(context);
+					})();*/
+					//弹簧
+					(function(){
+						var balls = [];
+
+						var gravity = 0.5;
+						var friction = 0.9;
+						var spring = 0.03;
+						var mouse = {"x": 101, "y": 10};
+
+						for(var i = 0; i < 5; i++){
+							var ball = new Ball(5);
+							balls.push(ball);
+						}
+
+						function draw(nextBall, index){
+							var x = y = 0;
+							if(index == 0){								
+								x = mouse.x;
+								y = mouse.y;
+								move(nextBall, x, y);
+							}
+							else{
+								var prevBall = balls[index - 1];
+								x = prevBall.x;
+								y = prevBall.y;
+								move(nextBall, x, y);
+							}
+							context.moveTo(x, y);
+							context.lineTo(nextBall.x, nextBall.y);
+							context.stroke();
+							nextBall.draw(context);
+						}
+						function move(ball, x, y){
+							ball.vx += (x - ball.x) * spring;//加速度
+							ball.vy += (y - ball.y) * spring;
+							ball.vy += gravity;//加重力
+							ball.vx *= friction;
+							ball.vy *= friction;//弹动
+
+							ball.x += ball.vx;
+							ball.y += ball.vy;
+							//console.log(ball)
+						}
+						//draw
+						(function drawFrame(){
+							requestAnimationFrame(drawFrame, canvas);
+							context.clearRect(0, 0, canvas.width, canvas.height);
+							//mouse.x = Math.random() * canvas.width / 2;
+							//mouse.y = Math.random() * canvas.height / 2;
+							context.beginPath();
+							balls.forEach(draw);
+
+							
+						})();
+					})();
+				})(document.getElementById("spring"));
+				/*
+				 * 可拖放弹动
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d");
+					var mouse = {"x": 0, "y": 0};
+					canvas.addEventListener("mousemove", function(e){
+						var x, y;
+						if(e.pageX || e.pageY){
+							x = e.pageX;
+							y = e.pageY;
+						}
+						else{
+							x = e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+							y = e.clientY + document.body.scrollTop, document.documentElement.scrollTop;
+						}
+						x -= canvas.offsetLeft;
+						y -= canvas.offsetTop;
+						mouse.x = x;
+						mouse.y = y;
+					}, false);
+					(function(){
+						var balls = [];
+						var mainBall = new Ball(20);//主Ball
+						
+						for(var i = 0; i < 3; i++){
+							var ball = new Ball(10);
+							ball.x = Math.random() * canvas.width;
+							ball.y = Math.random() * canvas.height;
+							balls.push(ball);
+						}
+						canvas.addEventListener("mousedown", function(){
+							balls.forEach(function(ball){
+								if(containsPoint(getBounds(ball.x, ball.y, ball.radius), mouse.x, mouse.y)){
+									console.log(ball)
+								}
+							});
+						}, false);
+						balls.forEach(function(ball){
+							context.moveTo(mainBall.x, mainBall.y);
+							context.lineTo(ball.x, ball.y);
+							context.stroke();
+							ball.draw(context);
+						});
+						mainBall.draw(context);
+					})();
+				})(document.getElementById("multiSpring"));
+			}, false);
+		</script>
+	</head>
+	<body>
+		<div class="graphic">
+			<div class="trig">
+				<canvas id="multiSpring"></canvas>
+				<canvas id="shipSim"></canvas>
+				<canvas id="dragAndMove" style="position:absolute;top:0;right:0;"></canvas>
+				<canvas id="easing"></canvas>
+				<canvas id="removal"></canvas>
+				<canvas id="spring"></canvas>
+				<canvas id="bringWaveMove2"></canvas>
+				
+			</div>
+		</div>
+	</body>
+</html>

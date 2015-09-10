@@ -1,0 +1,250 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>随机分布</title>
+		<style>
+			html, body{padding:0; margin:0;}
+		</style>
+		<script>
+			window.utils = {};
+			window.utils.captureMouse = function (element) {
+				var mouse = {x: 0, y: 0, event: null},
+					body_scrollLeft = document.body.scrollLeft,
+					element_scrollLeft = document.documentElement.scrollLeft,
+					body_scrollTop = document.body.scrollTop,
+					element_scrollTop = document.documentElement.scrollTop,
+					offsetLeft = element.offsetLeft,
+					offsetTop = element.offsetTop;
+
+				element.addEventListener('mousemove', function (event) {
+					var x, y;
+
+					if (event.pageX || event.pageY) {
+						x = event.pageX;
+						y = event.pageY;
+					} else {
+						x = event.clientX + body_scrollLeft + element_scrollLeft;
+						y = event.clientY + body_scrollTop + element_scrollTop;
+					}
+					x -= offsetLeft;
+					y -= offsetTop;
+
+					mouse.x = x;
+					mouse.y = y;
+					mouse.event = event;
+				}, false);
+
+				return mouse;
+			};
+			window.utils.containsPoint = function (rect, x, y) {
+				return !(x < rect.x ||
+				x > rect.x + rect.width ||
+				y < rect.y ||
+				y > rect.y + rect.height);
+			};
+			/*
+			 * Ball
+			 */
+			function Ball(radius){
+				this.radius = radius || 40;
+				this.x = 0;
+				this.y = 0;
+				this.vx = 0;
+				this.vy = 0;
+				this.rotation = 0;
+				this.scaleX = 1;
+				this.scaleY = 1;
+				this.mass = 1;//质量
+				this.color = "#f00";
+				this.draw = function(context){
+					context.save();
+					context.translate(this.x, this.y);
+					context.rotate(this.rotation);
+					context.scale(this.scaleX, this.scaleY);
+					context.lineWidth = 1;
+					context.fillStyle = this.color;
+					context.beginPath();
+					//arc
+					context.arc(0, 0, this.radius, 0, Math.PI * 2, true);
+					context.closePath();
+					context.fill();
+					//context.stroke();
+					context.restore();
+				};
+				this.setColor = function(color){
+					this.color = color;
+				};
+			}
+			document.addEventListener("DOMContentLoaded", function(){
+				/*
+				 * 随机分布（正态分布）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d");
+					var length = 300;
+					while(length--){
+						//正方形分布
+						var x = canvas.width / 2 * (Math.random() * Math.cos(Math.random()));
+						var y = canvas.height / 1 * (Math.random() * Math.sin(Math.random())) - 90;
+						context.fillStyle = "#000000";
+						context.beginPath();
+						context.arc(x, y, 2, 0, Math.PI * 2, true);
+						context.closePath();
+						context.fill();
+					}
+				})(document.getElementById("random0"));
+				/*
+				 * 随机分布（正方形分布）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d");
+					var length = 300;
+					while(length--){
+						//正方形分布
+						var x = canvas.width / 2 + Math.random() * 200 - 100;
+						var y = canvas.height / 2 + Math.random() * 200 - 100;
+						context.fillStyle = "#000000";
+						context.beginPath();
+						context.arc(x, y, 2, 0, Math.PI * 2, true);
+						context.closePath();
+						context.fill();
+					}
+				})(document.getElementById("random1"));
+				/*
+				 * 随机分布（圆形分布）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d");
+					var length = 300;
+					var maxRadius = 100;
+					while(length--){
+						//圆形分布
+						var radius = Math.random() * maxRadius,//沿着半径的分布是均匀的，中心和边缘数码差不多，但是中心区域的面积小，所以看起来比较拥挤
+							angle = Math.random() * (Math.PI * 2),
+							x = canvas.width / 2 + Math.cos(angle) * radius,
+							y = canvas.height / 2 + Math.sin(angle) * radius;
+						context.fillStyle = "#000000";
+						context.beginPath();
+						context.arc(x, y, 2, 0, Math.PI * 2, true);
+						context.closePath();
+						context.fill();
+					}
+				})(document.getElementById("random2"));
+				/*
+				 * 随机分布（平滑圆形分布）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d");
+					var length = 300;
+					var maxRadius = 100;
+					while(length--){
+						var radius = Math.sqrt(Math.random()) * maxRadius,//分布比较平滑，随机数的平方根（偏向1，远离0）
+							angle = Math.random() * (Math.PI * 2),
+							x = canvas.width / 2 + Math.cos(angle) * radius,
+							y = canvas.height / 2 + Math.sin(angle) * radius;
+						context.fillStyle = "#000000";
+						context.beginPath();
+						context.arc(x, y, 2, 0, Math.PI * 2, true);
+						context.closePath();
+						context.fill();
+					}
+				})(document.getElementById("random3"));
+				/*
+				 * 随机分布（偏向分布中心区域）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d");
+					var length = 200;
+					var maxRadius = 100;
+					while(length--){
+						var x1 = Math.random() * canvas.width,
+							x2 = Math.random() * canvas.width,
+							x = (x1 + x2) / 2,//产生多个随机数并计算他们的平均值
+							y = canvas.height / 2 + Math.random() * 50 - 20;
+						var iterations = 6;
+						for(var i = 0, xpos = 0, ypos = 0; i < iterations; i++){
+							xpos += Math.random() * canvas.width;
+							ypos += Math.random() * canvas.height;//中心密集
+						}
+						x = xpos / iterations;
+						context.fillStyle = "#000000";
+						context.beginPath();
+						context.arc(x, y, 2, 0, Math.PI * 2, true);
+						context.closePath();
+						context.fill();
+					}
+				})(document.getElementById("random4"));
+				/*
+				 * 碰撞分布（产生一个随机坐标，检测是否在特定的形状内，如果在区域外则丢弃，然后在产生随机坐标，直到找到特定区域内的坐标为止）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball0 = new Ball(),
+						ball1 = new Ball(80);
+					ball0.x = 100;
+					ball0.y = canvas.height / 2;
+					ball1.x = 300;
+					ball1.y = canvas.height / 2;
+					var length = 200;
+
+					function checkCollision(x, y, ball){
+						var dx = x - ball.x,
+							dy = y - ball.y;
+						return Math.sqrt(dx * dx + dy * dy) < ball.radius;
+					}
+					while(length--){
+						var x = 0,
+							y = 0;
+						//检测是否在此形状内
+						while(!checkCollision(x, y, ball0) && !checkCollision(x, y, ball1)){
+							x = Math.random() * canvas.width;
+							y = Math.random() * canvas.height;
+						}
+						context.fillStyle = "#000000";
+						context.beginPath();
+						context.arc(x, y, 2, 0, Math.PI * 2, true);
+						context.closePath();
+						context.fill();
+					}
+				})(document.getElementById("random5"));
+				/*
+				 * 随机分布（高斯）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d");
+					var length = 200;
+					var maxRadius = 100;
+					function uniform(low, high){
+						return low + (Math.random() * (high - low));
+					}
+					while(length--){
+						do{
+							var x = uniform(-1, 1);
+							var y = uniform(-1, 1);
+							var r = x * x +  y * y;
+						}while(r >= 1 || r == 0);
+						x = x * Math.sqrt(-2 * Math.log(r) / r) * canvas.width / 2;
+						y = y * Math.sqrt(-2 * Math.log(r) / r) * canvas.height / 2;
+
+						context.fillStyle = "#000000";
+						context.beginPath();
+						context.arc(x, y, 2, 0, Math.PI * 2, true);
+						context.closePath();
+						context.fill();
+					}
+					
+				})(document.getElementById("random6"));
+			}, false);
+		</script>
+	</head>
+	<body>
+		<canvas id="random0" width="600" height="400"></canvas>
+		<canvas id="random1" width="300" height="400"></canvas>
+		<canvas id="random2" width="300" height="400"></canvas>
+		<canvas id="random3" width="300" height="400"></canvas>
+		<canvas id="random4" width="300" height="400"></canvas>
+		<canvas id="random5" width="600" height="400"></canvas>
+		<canvas id="random6" width="600" height="400"></canvas>
+	</body>
+</html>

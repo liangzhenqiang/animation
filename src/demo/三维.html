@@ -1,0 +1,995 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>三维</title>
+		<style>
+			html, body{padding:0; margin:0;}
+		</style>
+		<script>
+			window.utils = {};
+			window.utils.captureMouse = function (element) {
+				var mouse = {x: 0, y: 0, event: null},
+					body_scrollLeft = document.body.scrollLeft,
+					element_scrollLeft = document.documentElement.scrollLeft,
+					body_scrollTop = document.body.scrollTop,
+					element_scrollTop = document.documentElement.scrollTop,
+					offsetLeft = element.offsetLeft,
+					offsetTop = element.offsetTop;
+
+				element.addEventListener('mousemove', function (event) {
+					var x, y;
+
+					if (event.pageX || event.pageY) {
+						x = event.pageX;
+						y = event.pageY;
+					} else {
+						x = event.clientX + body_scrollLeft + element_scrollLeft;
+						y = event.clientY + body_scrollTop + element_scrollTop;
+					}
+					x -= offsetLeft;
+					y -= offsetTop;
+
+					mouse.x = x;
+					mouse.y = y;
+					mouse.event = event;
+				}, false);
+
+				return mouse;
+			};
+			window.utils.containsPoint = function (rect, x, y) {
+				return !(x < rect.x ||
+				x > rect.x + rect.width ||
+				y < rect.y ||
+				y > rect.y + rect.height);
+			};
+			/*
+			 * Ball
+			 */
+			function Ball(radius){
+				this.radius = radius || 40;
+				this.x = 0;
+				this.y = 0;
+				this.vx = 0;
+				this.vy = 0;
+				this.vz = 0;
+				this.xpos = 0;
+				this.ypos = 0;
+				this.zpos = 0;
+				this.rotation = 0;
+				this.scaleX = 1;
+				this.scaleY = 1;
+				this.mass = 1;//质量
+				this.color = "#f00";
+				this.draw = function(context){
+					context.save();
+					context.translate(this.x, this.y);
+					context.rotate(this.rotation);
+					context.scale(this.scaleX, this.scaleY);
+					context.lineWidth = 1;
+					context.fillStyle = this.color;
+					context.beginPath();
+					//arc
+					context.arc(0, 0, this.radius, 0, Math.PI * 2, true);
+					context.closePath();
+					context.fill();
+					//context.stroke();
+					context.restore();
+				};
+				this.setColor = function(color){
+					this.color = color;
+				};
+			}
+			/*
+			 * Point3D
+			 */
+			function Point3D(x, y, z){
+				this.x = x || 0;
+				this.y = y || 0;
+				this.z = z || 0;
+				this.fl = 250;//焦点
+				this.vpX = 0;
+				this.vpY = 0;//消失点
+				this.centerX = 0;
+				this.centerY = 0;
+				this.centerZ = 0;//中心点
+			}
+			Point3D.prototype.setVanishingPoint = function(vpX, vpY){
+				this.vpX = vpX;
+				this.vpY = vpY;
+			};
+			Point3D.prototype.setCenter = function(centerX, centerY, centerZ){
+				this.centerX = centerX;
+				this.centerY = centerY;
+				this.centerZ = centerZ;
+			};
+			Point3D.prototype.rotateX = function(angle){
+				var cos = Math.cos(angle),
+					sin = Math.sin(angle);
+				var y = this.y * cos - this.z * sin;
+				var z = this.z * cos + this.y * sin;
+				this.y = y;
+				this.z = z;
+			};
+			Point3D.prototype.rotateY = function(angle){
+				var cos = Math.cos(angle),
+					sin = Math.sin(angle);
+				var x = this.x * cos - this.z * sin;
+				var z = this.z * cos + this.x * sin;
+				this.x = x;
+				this.z = z;
+			};
+			Point3D.prototype.rotateZ = function(angle){
+				var cos = Math.cos(angle),
+					sin = Math.sin(angle);
+				var x = this.x * cos - this.y * sin;
+				var y = this.y * cos + this.x * sin;
+				this.x = x;
+				this.y = y;
+			};
+			/*经过透视图计算得到的坐标*/
+			Point3D.prototype.getScreenX = function(){
+				var scale = this.fl / (this.fl + this.z + this.centerZ);
+				return this.vpX + (this.x + this.centerX) * scale;
+			};
+			Point3D.prototype.getScreenY = function(){
+				var scale = this.fl / (this.fl + this.z + this.centerZ);
+				return this.vpY + (this.y + this.centerY) * scale;
+			};
+			/*
+			 * 定义三角形保存每个三角形的顶点
+			 */
+			function Triangle(a, b, c, color){
+				this.a = a;
+				this.b = b;
+				this.c = c;
+				this.color = color || "#f00";
+				this.alpha = 1;
+				this.light = null;
+			}
+			Triangle.prototype.setColor = function(color){
+				this.color = color;
+				return this;
+			};
+			Triangle.prototype.draw = function(context){
+				var color = typeof this.color === "string" ? parseInt(this.color.substr(1), 16) : color,
+					r = color >> 16 & 255,
+					g = color >> 8 & 255,
+					b = color & 255;
+				if(this.isBackface()){
+					return this;//如果背向就不绘制
+				}
+				context.save();
+				context.lineWidth = 1;
+				//context.strokeStyle = "#ccc";
+				//console.log(this.getAdjustedColor())
+				context.strokeStyle = context.fillStyle = this.getAdjustedColor();//"rgba(" + r + "," + g + "," + b + "," + this.alpha + ")";
+				context.beginPath();
+				context.moveTo(this.a.getScreenX(), this.a.getScreenY());
+				context.lineTo(this.b.getScreenX(), this.b.getScreenY());
+				context.lineTo(this.c.getScreenX(), this.c.getScreenY());
+				context.closePath();
+				context.fill();
+				context.stroke();
+				context.restore();
+			};
+			Triangle.prototype.isBackface = function(){
+				/*
+				* 计算三角形两条边的长度，然后用乘法和比较，其他三角形相对于canvas的法线向量，就能判断出方向
+				*/
+				var cax = this.c.getScreenX() - this.a.getScreenX();
+				var cay = this.c.getScreenY() - this.a.getScreenY();
+				var bcx = this.b.getScreenX() - this.c.getScreenX();
+				var bcy = this.b.getScreenY() - this.c.getScreenY();
+				return cax * bcy > cay * bcx;
+			};
+			/*
+			 * 基于灯光的颜色值
+			 */
+			Triangle.prototype.getAdjustedColor = function(){
+				var color = typeof this.color === "string" ? parseInt(this.color.substr(1), 16) : color,
+					r = color >> 16 & 255,
+					g = color >> 8 & 255,
+					b = color & 255,
+					lightFactor = this.getLightFactor();//返回0.0~1.0之间，三角形颜色改变系数，1代表全亮度，0代表黑色
+				//console.log(r,g,b, lightFactor)
+				r *= lightFactor;
+				g *= lightFactor;
+				b *= lightFactor;
+				return "#" + ("00000" + ((r << 16 | g << 8 | b) | 0).toString(16)).substr(-6);
+			};
+			Triangle.prototype.getLightFactor = function(){
+				//a与b向量的连线
+				var ab = {
+					"x": this.a.x - this.b.x,
+					"y": this.a.y - this.b.y,
+					"z": this.a.z - this.b.z
+				};
+				//b与c向量的连线
+				var bc = {
+					"x": this.b.x - this.c.x,
+					"y": this.b.y - this.c.y,
+					"z": this.b.z - this.c.z
+				};
+				//三角形法线（与三角形表面垂直的向量）计算向量ab和bc的叉积
+				var normal = {
+					"x": ab.y * bc.z - ab.z * bc.y,
+					"y": -(ab.x * bc.z - ab.z * bc.x),
+					"z": ab.x * bc.y - ab.y * bc.x
+				};
+				//计算点积，表示两个向量之间的差值
+				var dotProd = normal.x * this.light.x + normal.y * this.light.y + normal.z * this.light.z;
+				//计算法线幅值
+				var normalMag = Math.sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+				//计算灯光幅值
+				var lightMag = Math.sqrt(this.light.x * this.light.x + this.light.y * this.light.y + this.light.z * this.light.z);
+				//亮度系数，灯光照射在多边形表面上的角度0~Math.PI（0~180）之间，两个度量值相除得到比例
+				return (Math.acos(dotProd / (normalMag * lightMag)) / Math.PI) * this.light.brightness;
+			};
+			/*
+			 * 灯光
+			 */
+			function Light(x, y, z, brightness){
+				this.x = typeof x === "undefined" ? -100 : x;
+				this.y = typeof y === "undefined" ? -100 : y;
+				this.z = typeof z === "undefined" ? -100 : z;
+				this.brightness = typeof brightness === "undefined" ? 1 : brightness;
+
+				this.setBrightness = function(b){
+					this.brightness = Math.min(Math.max(b, 0), 1);
+				};
+			}
+			/*
+			 * Z排序
+			 */
+			Triangle.prototype.getDepth = function(){
+				return Math.min(this.a.z, this.b.z, this.c.z);
+			};
+			//ready
+			document.addEventListener("DOMContentLoaded", function(){
+				/*
+				 * （三维，屏幕环绕）
+				 */
+				(function(canvas){
+					function loadTree(x, y, size, angle, depth, branchWidth, fn){
+                        if(depth <= 0)
+                            return;
+                        var endX = x + size * Math.cos(angle),
+                            endY = y + size * Math.sin(angle),
+                            maxBranch = 4,
+                            maxAngle = 2 * Math.PI / 4;//90度
+
+                        //console.log("M" + x + " " + y + ", L" + endX + " " + endY);
+                        fn(x, y, endX, endY, angle, depth, branchWidth);
+                        for(var i = 0; i < (Math.random() * maxBranch - 1) + 1; i++){
+                            loadTree(
+                                endX,
+                                endY,
+                                size * (.7 + Math.random() * .3),
+                                angle + Math.random() * maxAngle - maxAngle * .5,
+                                depth - 1,
+                                branchWidth * .7,//枝干粗细
+                                fn
+                            );
+                        }
+                    }
+					function Tree(context, x, y){
+						this.x = 0;
+						this.y = 0;
+						this.xpos = 0;
+						this.ypos = 0;
+						this.zpos = 0;
+						this.scaleX = 1;
+						this.scaleY = 1;
+						this.alpha = 1;
+						this.branchs = [];
+						this.branchs[0] = -140 - Math.random() * 20;
+						this.branchs[1] = -30 - Math.random() * 30;
+						this.branchs[2] = Math.random() * 80 - 40;
+						this.branchs[3] = -100 - Math.random() * 40;
+						this.branchs[4] = -60 - Math.random() * 40;
+						this.branchs[5] = Math.random() * 30;
+						this.branchs[6] = -110 - Math.random() * 20;
+						/*loadTree(x, y, 50, -Math.PI / 2, 6, 6, function(x, y, endX, endY, angle, depth, branchWidth){
+							//context.translate(x, y);
+							context.scale(this.scaleX, this.scaleY);
+                            context.beginPath();
+                            context.lineWidth = branchWidth;
+                            context.lineCap = "round";
+                            context.moveTo(x, y);
+                            context.lineTo(endX, endY);
+                            context.strokeStyle = depth <= 2
+                                ? "rgb(0," + ((Math.random() * 64 + 128) >>> 0) + ",0)"
+                                : "rgb(" + ((Math.random() * 64 + 64) >>> 0) + ",50,25)";
+                            context.stroke();
+                        });*/
+						this.draw = function(context){
+							context.save();
+							context.translate(this.x, this.y);
+							context.scale(this.scaleX, this.scaleY);
+							context.lineWidth = 1;
+							context.strokeStyle = "#fff"//"rgba(255,255,255," + this.alpha + ")";
+							context.beginPath();
+							context.moveTo(0, 0);
+							context.lineTo(0, this.branchs[0]);
+							context.moveTo(0, this.branchs[1]);
+							context.lineTo(this.branchs[2], this.branchs[3]);
+							context.moveTo(0, this.branchs[4]);
+							context.lineTo(this.branchs[5], this.branchs[6]);
+							context.stroke();
+							context.restore();
+						};
+					}
+					var context = canvas.getContext("2d"),
+						trees = [];
+
+					var floor = 200;
+					var f1 = 250;
+					var vpX = canvas.width / 2;
+					var vpY = canvas.height / 2;
+					var vx = 0;
+					var vy = 0;
+					var vz = 0;
+					var friction = 0.8;
+					var gravity = 0.98;
+
+					window.addEventListener("keydown", function(e){
+						e.preventDefault();
+						if(e.keyCode == 38)
+							vz -= 1;
+						if(e.keyCode == 40)
+							vz += 1;
+					});
+
+					context.fillStyle = "#000";
+					//context.fillRect(0, 0, canvas.width, canvas.height);
+					for(var i = 0; i < 100; i++){
+						var tree = new Tree(context, Math.random() * 100, 200);
+						tree.xpos = Math.random() * 2000 - 1000;
+						tree.ypos = floor;
+						tree.zpos = Math.random() * 10000;
+						trees.push(tree);
+					}
+					function move(tree){
+						tree.xpos += vx;
+						tree.ypos += vy;
+						tree.zpos += vz;
+						if(tree.ypos < 50)
+							tree.ypos = 50;
+
+						if(tree.zpos < -f1)
+							tree.zpos += 10000;
+						if(tree.zpos > 10000 - f1)
+							tree.zpos -= 10000;
+
+						var scale = f1 / (f1 + tree.zpos);
+						tree.scaleX = scale;
+						tree.scaleY = scale;
+						tree.x = vpX + tree.xpos * scale;
+						tree.y = vpY + tree.ypos * scale;
+						tree.alpha = scale * 0.7 + 0.3;//增加透明度，离得越远颜色越淡
+						//console.log(tree.x)
+					}
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						trees.sort(function(a, b){
+							return a.zpos - b.zpos;
+						});
+						trees.forEach(function(tree){
+							move(tree);
+							tree.draw(context);
+						});
+						vy -= gravity;
+						vz *= friction;
+						vy *= friction;
+					})();
+				})(document.getElementById("tree"));
+				/*
+				 * （三维，缓动）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(20);
+
+					var tx = Math.random() * 500 - 250;
+					var ty = Math.random() * 500 - 250;
+					var tz = Math.random() * 500;
+					var f1 = 250;
+					var easing = 0.1;
+					var vpX = canvas.width / 2;
+					var vpY = canvas.height / 2;
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						var dx = tx - ball.xpos,
+							dy = ty - ball.ypos,
+							dz = tz - ball.zpos,
+							distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+						ball.xpos += dx * easing;
+						ball.ypos += dy * easing;
+						ball.zpos += dz * easing;
+
+						if(distance < 1){
+							tx = Math.random() * 500 - 250;
+							ty = Math.random() * 500 - 250;
+							tz = Math.random() * 500;
+						}
+
+						if(ball.zpos > -f1){
+							var scale = f1 / (f1 + ball.zpos);
+							ball.scaleX = scale;
+							ball.scaleY = scale;
+							ball.x = vpX + ball.xpos * scale;
+							ball.y = vpY + ball.ypos * scale;
+						}
+						ball.draw(context);
+					})();
+				})(document.getElementById("3d-easing"));
+				/*
+				 * （三维，弹动）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(20);
+
+					var tx = Math.random() * 500 - 250;
+					var ty = Math.random() * 500 - 250;
+					var tz = Math.random() * 500;
+					var f1 = 250;
+					var spring = 0.1;
+					var friction = 0.95;
+					var vpX = canvas.width / 2;
+					var vpY = canvas.height / 2;
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						var dx = tx - ball.xpos,
+							dy = ty - ball.ypos,
+							dz = tz - ball.zpos;
+						ball.vx += dx * spring; //根据物体与目标的距离改变速度，而不是位置
+						ball.vy += dy * spring;
+						ball.vz += dz * spring;
+						ball.xpos += ball.vx;
+						ball.ypos += ball.vy;
+						ball.zpos += ball.vz;
+						ball.vx *= friction;//加上摩擦力
+						ball.vy *= friction;
+						ball.vz *= friction;
+
+						if(ball.zpos > -f1){
+							var scale = f1 / (f1 + ball.zpos);
+							ball.scaleX = scale;
+							ball.scaleY = scale;
+							ball.x = vpX + ball.xpos * scale;
+							ball.y = vpY + ball.ypos * scale;
+						}
+						ball.draw(context);
+					})();
+				})(document.getElementById("3d-spring"));
+				/*
+				 * （三维，旋转）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						balls = [],
+						mouse = utils.captureMouse(canvas);
+
+					var vpX = canvas.width / 2;
+					var vpY = canvas.height / 2;//屏幕中心作为消失点
+					var f1 = 250;
+					var angleX;
+
+					for(var i = 0; i < 10; i++){
+						var ball = new Ball(15);
+						ball.xpos = Math.random() * 200 - 100;
+						ball.ypos = Math.random() * 200 - 100;
+						ball.zpos = Math.random() * 200 - 100;
+						balls.push(ball);
+					}
+					function rotateX(ball, angle){
+						var cos = Math.cos(angle),
+							sin = Math.sin(angle);
+						var y1 = ball.ypos * cos - ball.zpos * sin;
+						var z1 = ball.zpos * cos + ball.ypos * sin;
+						ball.ypos = y1;
+						ball.zpos = z1;
+					}
+					//选择Y坐标，当物体绕着某一条轴旋转时，它在其他两条轴上的坐标发生变化
+					function rotateY(ball, angle){
+						var cos = Math.cos(angle),
+							sin = Math.sin(angle);
+						var x1 = ball.xpos * cos - ball.zpos * sin;
+						var z1 = ball.zpos * cos + ball.xpos * sin;
+						ball.xpos = x1;
+						ball.zpos = z1;
+					}
+					function rotateZ(ball, angle){
+						var cos = Math.cos(angle),
+							sin = Math.sin(angle);
+						var y1 = ball.ypos * cos - ball.zpos * sin;
+						var z1 = ball.zpos * cos + ball.ypos * sin;
+						ball.ypos = y1;
+						ball.zpos = z1;
+					}
+					function draw(ball){
+						if(ball.zpos > -f1){
+							var scale = f1 / (f1 + ball.zpos);
+							ball.scaleX = scale;
+							ball.scaleY = scale;
+							ball.x = vpX + ball.xpos * scale;
+							ball.y = vpX + ball.ypos * scale;
+							ball.visible = true
+						}
+						else{
+							ball.visible = false;//防止f1除0
+						}
+					}
+					context.fillStyle = "#000";
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						angleY = (mouse.x - vpX) * 0.001;//旋转Y轴
+						angleX = (mouse.y - vpY) * 0.001;
+
+						balls.forEach(function(ball){
+							rotateY(ball, angleY);
+							rotateX(ball, angleX);
+							//rotateZ(ball, angleX);
+							draw(ball);
+
+							ball.draw(context);
+						});
+						balls.sort(function(a, b){
+							return a.zpos - b.zpos;
+						});
+					})();
+				})(document.getElementById("3d-rotation"));
+				/*
+				 * （三维，碰撞）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						balls = [];
+
+					var vpX = canvas.width / 2;
+					var vpY = canvas.height / 2;//消失在中心点
+					var f1 = 250;
+
+					for(var i = 0; i < 10; i++){
+						var ball = new Ball(15);
+						ball.xpos = Math.random() * 400 - 200;
+						ball.ypos = Math.random() * 400 - 200;
+						ball.zpos = Math.random() * 400 - 200;
+						ball.vx = Math.random() * 5 - 1;
+						ball.vy = Math.random() * 5 - 1;
+						ball.vx = Math.random() * 5 - 1;
+						balls.push(ball);
+					}
+					function check(a, b){
+						var dx = a.xpos - b.xpos,
+							dy = a.ypos - b.ypos,
+							dz = a.zpos - b.zpos,
+							distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+						//console.log(distance, a.radius + b.radius);
+						if(distance < a.radius + b.radius){
+							a.setColor("#00f");
+							b.setColor("#00f");
+						}
+					}
+					function move(ball){
+						ball.xpos += ball.vx;
+						ball.ypos += ball.vy;
+						ball.zpos += ball.vz;
+						//三维空间限制
+						var top = -200,
+							bottom = 200,
+							left = -200,
+							right = 200,
+							front = -200,
+							back = 200;
+						if(ball.xpos + ball.radius > right){
+							ball.xpos = right - ball.radius;
+							ball.vx *= -1;
+						}
+						else if(ball.xpos - ball.radius < left){
+							ball.xpos = left + ball.radius;
+							ball.vx *= -1;
+						}
+						if(ball.ypos + ball.radius > bottom){
+							ball.ypos = bottom - ball.radius;
+							ball.vy *= -1;
+						}
+						else if(ball.ypos - ball.radius < top){
+							ball.ypos = top + ball.radius;
+							ball.vy *= -1;
+						}
+						if(ball.zpos + ball.radius > back){
+							ball.zpos = back - ball.radius;
+							ball.vz *= - 1;
+						}
+						else if(ball.zpos - ball.radius < front){
+							ball.zpos = front + ball.radius;
+							ball.vz *= -1;
+						}
+						//move
+						if(ball.zpos > -f1){
+							var scale = f1 / (f1 + ball.zpos);
+							ball.scaleX = scale;
+							ball.scaleY = scale;
+							ball.x = vpX + ball.xpos * scale;
+							ball.y = vpY + ball.ypos * scale;
+							ball.visible = true;
+						}
+						else
+							ball.visible = false;
+					}
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						balls.sort(function(a, b){
+							return a.zpos - b.zpos;
+						});
+						balls.forEach(function(ball, index){
+							for(var i = index + 1; i < balls.length; i++)
+								check(ball, balls[i]);
+							move(ball);
+							if(ball.visible)
+								ball.draw(context);
+						});
+					})();
+				})(document.getElementById("3d-collision"));
+				/*
+				 * （三维，旋转线）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						points = [],
+						mouse = utils.captureMouse(canvas);
+
+					var fl = 250;
+					var vpX = canvas.width / 2;
+					var vpY = canvas.height / 2;
+					var angleX = 0;
+					var angleY = 0;
+
+					for(var i = 0; i < 50; i++){
+						var point = new Point3D(Math.random() * 200 - 100, Math.random() * 200 - 100, Math.random() * 200 - 100);
+						point.setVanishingPoint(vpX, vpY);
+						points.push(point);
+					}
+					function move(point){
+						point.rotateX(angleX);
+						point.rotateY(angleY);
+					}
+					function draw(){
+						context.beginPath();
+						points.forEach(function(point, index){
+							move(point);
+							drawTo(point, index);
+						});
+						context.stroke();
+					}
+					function drawTo(point, index){
+						if(index == 0){
+							context.moveTo(points[0].getScreenX(), points[0].getScreenY());
+						}
+						else{
+							context.lineTo(point.getScreenX(), point.getScreenY());
+						}
+					}
+					draw();
+					//draw
+					canvas.addEventListener("mousemove", function(e){
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						angleX = (mouse.y - vpY) * 0.001;
+						angleY = (mouse.x - vpX) * 0.001;
+
+						draw();
+					}, false);
+				})(document.getElementById("3d-lines"));
+				/*
+				 * （三维，魔方）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						points = [],
+						triangles = [],
+						mouse = utils.captureMouse(canvas);
+					var pointData = [
+						{"x": -100, "y": -100, "z": -100},
+						{"x": 100, "y": -100, "z": -100},
+						{"x": 100, "y": 100, "z": -100},
+						{"x": -100, "y": 100, "z": -100},
+						{"x": -100, "y": -100, "z": 100},
+						{"x": 100, "y": -100, "z": 100},
+						{"x": 100, "y": 100, "z": 100},
+						{"x": -100, "y": 100, "z": 100}
+					];
+					var triangleData = [
+						{"a": 0, "b": 1, "c": 2, "color": "#cccccc"},
+						{"a": 0, "b": 2, "c": 3, "color": "#cccccc"},
+						{"a": 0, "b": 5, "c": 1, "color": "#cccccc"},
+						{"a": 0, "b": 4, "c": 5, "color": "#cccccc"},
+						{"a": 4, "b": 6, "c": 5, "color": "#cccccc"},
+						{"a": 4, "b": 7, "c": 6, "color": "#cccccc"},
+
+						{"a": 3, "b": 2, "c": 6, "color": "#cccccc"},
+						{"a": 3, "b": 6, "c": 7, "color": "#cccccc"},
+						{"a": 1, "b": 5, "c": 6, "color": "#cccccc"},
+						{"a": 1, "b": 6, "c": 2, "color": "#cccccc"},
+						{"a": 4, "b": 0, "c": 3, "color": "#cccccc"},
+						{"a": 4, "b": 3, "c": 7, "color": "#cccccc"}
+					];
+					var fl = 250;
+					var vpX = canvas.width / 2;
+					var vpY = canvas.height / 2;
+					var angleX = 0, angleY = 0;
+					var offsetX = 0, offsetY = 0;
+
+					for(var i = 0; i < pointData.length; i++){
+						var point = new Point3D(pointData[i].x, pointData[i].y, pointData[i].z);
+						point.setVanishingPoint(vpX, vpY);
+						point.setCenter(0, 0, 200);
+						points.push(point);
+					}
+					for(i = 0; i < triangleData.length; i++){
+						triangles.push(new Triangle(points[triangleData[i].a], points[triangleData[i].b], points[triangleData[i].c]).setColor(triangleData[i].color));
+					}
+					var light = new Light();
+					triangles.forEach(function(triangle){
+						triangle.light = light;
+					});
+					function draw(){
+						points.forEach(function(point){
+							point.rotateX(angleX);
+							point.rotateY(angleY);
+							point.setCenter(offsetX, offsetY, 200);
+						});
+						triangles.forEach(function(triangle){
+							//triangle.light = light;
+							triangle.draw(context);
+						});
+					}
+					draw();
+					window.addEventListener("keydown", function(e){
+						e.preventDefault();
+						context.clearRect(0, 0, canvas.width, canvas.height);
+						switch(e.keyCode){
+							case 37:
+								offsetX -= 5;
+							break;
+							case 39:
+								offsetX += 5;
+							break;
+							case 38:
+								offsetY -= 5;
+							break;
+							case 40:
+								offsetY += 5;
+							break;
+						}
+						draw();
+					}, false);
+					//draw
+					canvas.addEventListener("mousemove", function(e){
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						angleX = (mouse.y - vpY) * 0.0005;
+						angleY = (mouse.x - vpX) * 0.0005;
+						triangles.sort(function(a, b){
+							return b.getDepth() - a.getDepth();
+						});
+						draw();
+					}, false);
+				})(document.getElementById("3d-cube"));
+				/*
+				 * （三维，圆柱体）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						points = [],
+						triangles = [],
+						mouse = utils.captureMouse(canvas);
+
+					var vpX = canvas.width / 2;
+					var vpY = canvas.height / 2;
+					var angleX = angleY = 0;
+
+					for(var i = 0, length = 20, id = 0; i < length; i++){
+						var angle = Math.PI * 2 / length * i,//用圆周除以表面的个数
+							cos = Math.cos(angle),
+							sin = Math.sin(angle);//计算圆上的x、y坐标
+						var a = new Point3D(cos * 200, sin * 200, -100);
+						var b = new Point3D(cos * 200, sin * 200, 100);
+						a.setVanishingPoint(vpX, vpY);
+						b.setVanishingPoint(vpX, vpY);
+						a.setCenter(0, 0, 200);
+						b.setCenter(0, 0, 200);
+						points[id] = a;//一组近一些
+						points[id + 1] = b;//一组远一些
+						id += 2;
+					}
+					//用三角形连接
+					for(i = 0, id = 0; i < length - 1; i++){
+						/*
+						* 形成两个三角形
+						* 0, 3, 1
+						* 0, 2, 3
+						*/
+						triangles[id] = new Triangle(points[id], points[id + 3], points[id + 1]).setColor("#66c");
+						triangles[id + 1] = new Triangle(points[id], points[id + 2], points[id + 3]).setColor("#66c");
+						id += 2;
+					}
+					/*
+					 * 最后一个三角形
+					 * id, 1, id + 1
+					 * id, 0, 1
+					 */
+					/*triangles[id] = new Triangle(points[id], points[1], points[id + 1]).setColor("#66c");
+					triangles[id + 1] = new Triangle(points[id], points[0], points[1]).setColor("#66c");
+
+					function draw(){
+						points.forEach(function(point){
+							point.rotateX(angleX);
+							point.rotateY(angleY);
+						});
+						triangles.forEach(function(triangle){
+							triangle.draw(context);
+						});
+					}
+					//draw();
+					//draw
+					canvas.addEventListener("mousemove", function(e){
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						angleX = (mouse.y - vpY) * 0.0005;
+						angleY = (mouse.x - vpX) * 0.0005;
+
+						//draw();
+					}, false);*/
+
+				})(document.getElementById("3d-cylinder"));
+				/*
+				 * （三维，多边形A）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						mouse = utils.captureMouse(canvas),
+						light = new Light(),
+						points = [],
+						triangles = [],
+						fl = 250,
+						vpX = canvas.width / 2,
+						vpY = canvas.height / 2,
+						angleX, angleY;
+
+					//first set
+					points[0]  = new Point3D( -50, -250, -50);
+					points[1]  = new Point3D(  50, -250, -50);
+					points[2]  = new Point3D( 200,  250, -50);
+					points[3]  = new Point3D( 100,  250, -50);
+					points[4]  = new Point3D(  50,  100, -50);
+					points[5]  = new Point3D( -50,  100, -50);
+					points[6]  = new Point3D(-100,  250, -50);
+					points[7]  = new Point3D(-200,  250, -50);
+					points[8]  = new Point3D(   0, -150, -50);
+					points[9]  = new Point3D(  50,    0, -50);
+					points[10] = new Point3D( -50,    0, -50);
+					//second set
+					points[11] = new Point3D( -50, -250,  50);
+					points[12] = new Point3D(  50, -250,  50);
+					points[13] = new Point3D( 200,  250,  50);
+					points[14] = new Point3D( 100,  250,  50);
+					points[15] = new Point3D(  50,  100,  50);
+					points[16] = new Point3D( -50,  100,  50);
+					points[17] = new Point3D(-100,  250,  50);
+					points[18] = new Point3D(-200,  250,  50);
+					points[19] = new Point3D(   0, -150,  50);
+					points[20] = new Point3D(  50,    0,  50);
+					points[21] = new Point3D( -50,    0,  50);
+
+					points.forEach(function (point) {
+					point.setVanishingPoint(vpX, vpY);
+					point.setCenter(0, 0, 200);
+					});
+
+					triangles[0]  = new Triangle(points[0],  points[1],  points[8],  "#cccccc");
+					triangles[1]  = new Triangle(points[1],  points[9],  points[8],  "#cccccc");
+					triangles[2]  = new Triangle(points[1],  points[2],  points[9],  "#cccccc");
+					triangles[3]  = new Triangle(points[2],  points[4],  points[9],  "#cccccc");
+					triangles[4]  = new Triangle(points[2],  points[3],  points[4],  "#cccccc");
+					triangles[5]  = new Triangle(points[4],  points[5],  points[9],  "#cccccc");
+					triangles[6]  = new Triangle(points[9],  points[5],  points[10], "#cccccc");
+					triangles[7]  = new Triangle(points[5],  points[6],  points[7],  "#cccccc");
+					triangles[8]  = new Triangle(points[5],  points[7],  points[10], "#cccccc");
+					triangles[9]  = new Triangle(points[0],  points[10], points[7],  "#cccccc");
+					triangles[10] = new Triangle(points[0],  points[8],  points[10], "#cccccc");
+
+					triangles[11] = new Triangle(points[11], points[19], points[12], "#cccccc");
+					triangles[12] = new Triangle(points[12], points[19], points[20], "#cccccc");
+					triangles[13] = new Triangle(points[12], points[20], points[13], "#cccccc");
+					triangles[14] = new Triangle(points[13], points[20], points[15], "#cccccc");
+					triangles[15] = new Triangle(points[13], points[15], points[14], "#cccccc");
+					triangles[16] = new Triangle(points[15], points[20], points[16], "#cccccc");
+					triangles[17] = new Triangle(points[20], points[21], points[16], "#cccccc");
+					triangles[18] = new Triangle(points[16], points[18], points[17], "#cccccc");
+					triangles[19] = new Triangle(points[16], points[21], points[18], "#cccccc");
+					triangles[20] = new Triangle(points[11], points[18], points[21], "#cccccc");
+					triangles[21] = new Triangle(points[11], points[21], points[19], "#cccccc");
+
+					triangles[22] = new Triangle(points[0],  points[11], points[1],  "#cccccc");
+					triangles[23] = new Triangle(points[11], points[12], points[1],  "#cccccc");
+					triangles[24] = new Triangle(points[1],  points[12], points[2],  "#cccccc");
+					triangles[25] = new Triangle(points[12], points[13], points[2],  "#cccccc");
+					triangles[26] = new Triangle(points[3],  points[2],  points[14], "#cccccc");
+					triangles[27] = new Triangle(points[2],  points[13], points[14], "#cccccc");
+					triangles[28] = new Triangle(points[4],  points[3],  points[15], "#cccccc");
+					triangles[29] = new Triangle(points[3],  points[14], points[15], "#cccccc");
+					triangles[30] = new Triangle(points[5],  points[4],  points[16], "#cccccc");
+					triangles[31] = new Triangle(points[4],  points[15], points[16], "#cccccc");
+					triangles[32] = new Triangle(points[6],  points[5],  points[17], "#cccccc");
+					triangles[33] = new Triangle(points[5],  points[16], points[17], "#cccccc");
+					triangles[34] = new Triangle(points[7],  points[6],  points[18], "#cccccc");
+					triangles[35] = new Triangle(points[6],  points[17], points[18], "#cccccc");
+					triangles[36] = new Triangle(points[0],  points[7],  points[11], "#cccccc");
+					triangles[37] = new Triangle(points[7],  points[18], points[11], "#cccccc");
+					triangles[38] = new Triangle(points[8],  points[9],  points[19], "#cccccc");
+					triangles[39] = new Triangle(points[9],  points[20], points[19], "#cccccc");
+					triangles[40] = new Triangle(points[9],  points[10], points[20], "#cccccc");
+					triangles[41] = new Triangle(points[10], points[21], points[20], "#cccccc");
+					triangles[42] = new Triangle(points[10], points[8],  points[21], "#cccccc");
+					triangles[43] = new Triangle(points[8],  points[19], points[21], "#cccccc");
+
+					triangles.forEach(function (triangle) {
+						triangle.light = light;
+					});
+					function move (point) {
+						point.rotateX(angleX);
+						point.rotateY(angleY);
+					}
+					function depth (a, b) {
+						return (b.getDepth() - a.getDepth());
+					}
+
+					function draw (triangle) {
+						triangle.draw(context);
+					}
+
+					(function drawFrame () {
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						angleX = (mouse.y - vpY) * 0.0005;
+						angleY = (mouse.x - vpX) * 0.0005;
+						points.forEach(move);
+						triangles.sort(depth);
+						triangles.forEach(draw);
+					}());
+				})(document.getElementById("3d-a"));
+			}, false);
+		</script>
+	</head>
+	<body>
+		<canvas id="tree" width="400" height="400"></canvas>
+		<canvas id="3d-easing" width="500" height="400"></canvas>
+		<canvas id="3d-spring" width="400" height="400"></canvas>
+		<canvas id="3d-rotation" width="600" height="400"></canvas>
+		<canvas id="3d-collision" width="600" height="400"></canvas>
+		<canvas id="3d-lines" width="600" height="400"></canvas>
+		<canvas id="3d-cube" width="600" height="400"></canvas>
+		<canvas id="3d-cylinder" width="600" height="400"></canvas>
+		<canvas id="3d-a" width="600" height="400"></canvas>
+	</body>
+</html>

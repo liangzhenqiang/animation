@@ -1,0 +1,818 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>旋转、万有引力</title>
+		<style>
+			html, body{padding:0; margin:0;}
+		</style>
+		<script>
+			function Ball(radius){
+				this.radius = radius || 40;
+				this.x = 0;
+				this.y = 0;
+				this.vx = 0;
+				this.vy = 0;
+				this.vz = 0;
+				this.xpos = 0;
+				this.ypos = 0;
+				this.zpos = 0;
+				this.rotation = 0;
+				this.scaleX = 1;
+				this.scaleY = 1;
+				this.mass = 1;//质量
+				this.color = "#f00";
+				this.draw = function(context){
+					context.save();
+					context.translate(this.x, this.y);
+					context.rotate(this.rotation);
+					context.scale(this.scaleX, this.scaleY);
+					context.lineWidth = 1;
+					context.fillStyle = this.color;
+					context.beginPath();
+					//arc
+					context.arc(0, 0, this.radius, 0, Math.PI * 2, true);
+					context.closePath();
+					context.fill();
+					//context.stroke();
+					context.restore();
+				};
+				this.setColor = function(color){
+					this.color = color;
+				};
+			}
+			/*
+			 * Line
+			 */
+			function Line(x1, y1, x2, y2){
+				this.x = 0;
+				this.y = 0;
+				this.x1 = x1 || 0;
+				this.y1 = y1 || 0;
+				this.x2 = x2 || 0;
+				this.y2 = y2 || 0;
+				this.rotation = 0;
+				this.scaleX = 1;
+				this.scaleY = 1;
+			}
+			Line.prototype.draw = function(context){
+				context.save();
+				context.translate(this.x, this.y);
+				context.rotate(this.rotation);
+				context.scale(this.scaleX, this.scaleY);
+				context.lineWidth = 1;
+
+				context.beginPath();
+				context.moveTo(this.x1, this.y1);
+				context.lineTo(this.x2, this.y2);
+				context.closePath();
+
+				context.stroke();
+				context.restore();
+			};
+			Line.prototype.getBounds = function(){
+				if(this.rotation == 0){
+					var minX = Math.min(this.x1, this.x2),
+						minY = Math.min(this.y1, this.y2),
+						maxX = Math.max(this.x1, this.x2),
+						maxY = Math.max(this.y1, this.y2);
+					return {
+						"x": this.x + minX,
+						"y": this.y + minY,
+						"width": maxX - minX,
+						"height": maxY - minY
+					};
+				}
+				else{
+					var sin = Math.sin(this.rotation),
+						cos = Math.sin(this.rotation),
+						x1r = cos * this.x1 + sin * this.y1,
+						x2r = cos * this.x2 + sin * this.y2,
+						y1r = cos * this.y1 + sin * this.x1,
+						y2r = cos * this.y2 + sin * this.x2;
+					return {
+						"x": this.x + Math.min(x1r, x2r),
+						"y": this.y + Math.min(y1r, y2r),
+						"width": Math.max(x1r, x2r) - Math.min(x1r, x2r),
+						"height": Math.max(y1r, y2r) - Math.min(y1r, y2r)
+					};
+				}
+			};
+			/*
+			 * 计算矩形边界
+			 */
+			function getBounds(x, y, radius){
+				return {
+					"x": x - radius,
+					"y": y - radius,
+					"width": radius * 2,
+					"height": radius * 2 
+				};
+			}
+			/*
+			 * 坐标位置是否在矩形内
+			 */
+			function containsPoint(rect, x, y){
+				return !(
+					x < rect.x ||
+					x > rect.x + rect.width ||
+					y < rect.y ||
+					y > rect.y + rect.height
+				);
+			}
+			document.addEventListener("DOMContentLoaded", function(){
+				/*
+				 * 旋转单个物体
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(20);
+					ball.x = Math.random() * canvas.width;
+					ball.y = Math.random() * canvas.height;
+
+					var vr = 0.05;//旋转角度
+					var cos = Math.cos(vr);
+					var sin = Math.sin(vr);
+					var centerX = canvas.width / 2;//中心点
+					var centerY = canvas.height / 2;
+
+					function rotate(x, y, sin, cos, reverse){
+						return {
+							"x": reverse ? (x * cos + y * sin) : (x * cos - y * sin),
+							"y": reverse ? (y * cos - x * sin) : (y * cos + x * sin)
+						};
+					}
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						var x1 = ball.x - centerX;
+						var y1 = ball.y - centerY;
+						var x2 = rotate(x1, y1, sin, cos, true).x;//x1 * cos - y1 * sin;
+						var y2 = rotate(x1, y1, sin, cos, true).y;//y1 * cos + x1 * sin;
+
+						ball.x = centerX + x2;
+						ball.y = centerY + y2;
+
+						ball.draw(context);
+					})();
+				})(document.getElementById("simpleRotate"));
+				/*
+				 * 旋转多个物体
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						balls = [];
+					var centerX = canvas.width / 2;
+					var centerY = canvas.height / 2;
+					var vr = 0.05;
+					var cos, sin;
+
+					for(var i = 0; i < 10; i++){
+						var ball = new Ball(10);
+						ball.x = Math.random() * canvas.width;
+						ball.y = Math.random() * canvas.height;
+						balls.push(ball);
+					}
+					var mouse = {"x": 0, "y": 0}, reverse = false;
+					canvas.addEventListener("mousemove", function(e){
+						var x, y;
+						if(e.pageX || e.pageY){
+							x = e.pageX;
+							y = e.pageY;
+						}
+						else{
+							x = e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+							y = e.clientY + document.body.scrollTop, document.documentElement.scrollTop;
+						}
+						x -= canvas.offsetLeft;
+						y -= canvas.offsetTop;
+						mouse.x = x;
+						mouse.y = y;
+						reverse = true;
+					}, false);
+					function rotate(x, y, sin, cos, reverse){
+						return {
+							"x": reverse ? (x * cos + y * sin) : (x * cos - y * sin),
+							"y": reverse ? (y * cos - x * sin) : (y * cos + x * sin)
+						};
+					}
+					function draw(ball){
+						ball.draw(context);
+					}
+					function move(ball){
+						var x1 = ball.x - centerX,
+							y1 = ball.y - centerY;
+						var x2 = rotate(x1, y1, sin, cos, reverse).x;//x1 * cos - y1 * sin;
+						var y2 = rotate(x1, y1, sin, cos, reverse).y;//y1 * cos + x1 * sin;
+						ball.x = centerX + x2;
+						ball.y = centerY + y2;
+					}
+					context.fillStyle = "#eee";
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						var angle = (mouse.x - centerX) * 0.0005;
+						cos = Math.cos(reverse ? -angle : angle);
+						sin = Math.sin(reverse ? -angle : angle);
+						balls.forEach(function(ball){
+							draw(ball);
+							move(ball);
+						});
+					})();
+				})(document.getElementById("multiRotate"));
+				/*
+				 *
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(20),
+						line = new Line(0, 0, canvas.width / 2, 0);
+					ball.x = 100;
+					ball.y = 100;
+					line.x = 50;
+					line.y = 100;
+					
+					var mouse = {"x": 0, "y": 0};
+					canvas.addEventListener("mousemove", function(e){
+						var x, y;
+						if(e.pageX || e.pageY){
+							x = e.pageX;
+							y = e.pageY;
+						}
+						else{
+							x = e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+							y = e.clientY + document.body.scrollTop, document.documentElement.scrollTop;
+						}
+						x -= canvas.offsetLeft;
+						y -= canvas.offsetTop;
+						mouse.x = x;
+						mouse.y = y;
+					}, false);
+
+					line.rotation = ((canvas.width / 2 - mouse.x) * 0.1) * Math.PI / 180;//45 * Math.PI / 180;
+
+					var cos = Math.cos(line.rotation);
+					var sin = Math.sin(line.rotation);
+					var gravity = 0.2;
+					var bounce = -0.6;
+
+					//draw
+					(function drawFrame(){
+						var raf = requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						//line.rotation = (Math.atan2(mouse.y - line.y, mouse.x - line.x));// * Math.PI / 180;
+						
+						ball.vy += gravity;
+						ball.x += ball.vx;
+						ball.y += ball.vy;
+						//
+						var x1 = ball.x - line.x,//小球位置减去直线位置，得到小球相对于直线的位置
+							y1 = ball.y - line.y;
+						var x2 = x1 * cos + y1 * sin;
+						var y2 = y1 * cos - x1 * sin;
+						//旋转向量（方向旋转）
+						var vx1 = ball.vx * cos + ball.vy * sin;
+						var vy1 = ball.vy * cos - ball.vx * sin;
+						//判断小球旋转后的纵坐标是否越过了直线，如果超过了则执行反弹。y2相对于line的位置，所以底边就是line自己，即0
+						if(y2 > -ball.radius && y2 < vy1){
+							y2 = -ball.radius;//执行反弹
+							vy1 *= bounce;
+						}
+						x1 = x2 * cos - y2 * sin;
+						y1 = y2 * cos + x2 * sin;
+						//把所有东西旋转归位
+						ball.vx = vx1 * cos - vy1 * sin;
+						ball.vy = vy1 * cos + vx1 * sin;
+						ball.x = line.x + x1;
+						ball.y = line.y + y1;
+						//碰撞检测
+						var bounds = line.getBounds();
+						//左边缘和右边缘
+						if(/*ball.x + ball.radius > bounds.x
+							&&*/ ball.x - ball.radius > bounds.x + bounds.width){
+							console.log(ball, bounds);
+							cancelAnimationFrame(raf);
+						}
+
+						ball.draw(context);
+						line.draw(context);
+					})();
+				})(document.getElementById("angleBounce"));
+				/*
+				 * 单轴上的动能守恒
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball0 = new Ball(20),
+						ball1 = new Ball(20);
+					ball0.mass = 2;
+					ball0.vx = 1;
+					ball0.x = 50;
+					ball0.y = canvas.height / 2;
+
+					ball1.mass = 1;
+					ball1.vx = -1;
+					ball1.x = canvas.width - ball1.radius;
+					ball1.y = canvas.height / 2;
+					//draw
+					(function drawFrame(){
+						var raf = requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						ball0.x += ball0.vx;
+						ball1.x += ball1.vx;
+						if(Math.abs(ball1.x - ball0.x) < ball0.radius + ball1.radius){
+							//碰撞后的动能守恒
+							var vxTotal = ball0.vx - ball1.vx;//计算两个物体的相对速度
+							var vx0Final = (ball0.mass - ball1.mass) * ball0.vx + 2 * ball1.mass * ball1.vx;//值为-1/3
+							var vx1Final = (ball1.mass - ball0.mass) * ball1.vx + 2 * ball0.mass * ball0.vx;//值为5/3
+							var vx1Final = vxTotal + ball0.vx;//得到的相对速度，就能计算出另一个物体的最终速度
+							ball0.vx = vx0Final;
+							ball1.vx = vx1Final;
+
+							ball0.x += ball0.vx;
+							ball1.x += ball1.vx;
+							//cancelAnimationFrame(raf);
+						}
+
+						ball0.draw(context);
+						ball1.draw(context);
+					})();
+				})(document.getElementById("billiard"));
+				/*
+				 * 双轴上的动能守恒
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						balls = [];
+						ball0 = new Ball(30),
+						ball1 = new Ball(20);
+					ball0.mass = 2;
+					ball0.vx = Math.random() * 10 -5;
+					ball0.vy = Math.random() * 10 -5;
+					ball0.x = canvas.width / 2;
+					ball0.y = canvas.height / 2;
+
+					ball1.mass = 1;
+					ball1.vx = Math.random() * 10 -5;
+					ball1.vy = Math.random() * 10 -5;
+					ball1.x = 100;
+					ball1.y = 100;
+
+					for(var i = 0; i < 20; i++){
+						var mass = Math.random() * 20 + 15;
+						var ball = new Ball(mass);
+						ball.mass = mass;
+						ball.x = Math.random() * canvas.width;//i * 50;
+						ball.y = Math.random() * canvas.height;//i * 50;//防止初始化就碰撞（通过速度除以比例速度移开重叠量的距离解决）
+						ball.vx = Math.random() * 10 - 5;
+						ball.vy = Math.random() * 10 - 5;
+						ball.setColor("rgb(" + (Math.random() * 0xffffff >> 16 & 0xff) + "," + ((Math.random() * 0xffffff) >> 8 & 0xff) + "," + ((Math.random() * 0xffffff) & 0xff) + ")");
+						balls.push(ball);
+					}
+
+					var bounce = -1;
+
+					function check(a, b){
+						var dx = b.x - a.x,
+							dy = b.y - a.y;
+						//基于距离的碰撞检测
+						if(Math.sqrt(dx * dx + dy * dy) < a.radius + b.radius){
+							//碰撞处理需要先计算两球直接的角度
+							var angle = Math.atan2(dy, dx),//角度
+								sin = Math.sin(angle),//保存在正弦和余弦
+								cos = Math.cos(angle);
+							//然后对两个小球的速度和位置进行坐标旋转
+							/*旋转后的位置*/
+							var x0 = 0,//a位置中心点
+								y0 = 0,
+								x1 = dx * cos + dy * sin,//b位置
+								y1 = dy * cos - dx * sin;
+							/*旋转后的速度*/
+							var vx0 = a.vx * cos + a.vy * sin,//a向量
+								vy0 = a.vy * cos - a.vx * sin,
+								vx1 = b.vx * cos + b.vy * sin,//b向量
+								vy1 = b.vy * cos - b.vx * sin;
+							//var pos0 = vx0;
+							//执行一维碰撞反应
+							var vxTotal = vx0 - vx1;
+							vx0 = ((a.mass - b.mass) * vx0 + 2 * b.mass * vx1) / (a.mass + b.mass);
+							vx1 = vxTotal + vx0;
+							//当空间小物体多并且移动速度高的情况下，两个物体发生接触就卡在一起。可以根据每个物体的速度与绝对速度的比例，把它们移开重叠量的一部分距离，最后的结果是两个物体刚刚接触，但是没有重叠
+							var absV = Math.abs(vx0) + Math.abs(vx1);//获取两个物体速度的绝对值之和
+							var overlap = Math.abs(a.radius + b.radius) - Math.abs(x0 - x1);//确定两个物体的重叠量，通过总半径减去距离
+							x0 += (vx0 / absV) * overlap;//根据每个物体速度与绝对速度的比例移开重叠量的一部分距离
+							x1 += (vx1 / absV) * overlap;
+							//获取碰撞后的位置与速度，则把一切旋转归位
+							/*计算旋转归位后的位置（反方向）*/
+							var x0Final = x0 * cos - y0 * sin,
+								y0Final = y0 * cos + x0 * sin,
+								x1Final = x1 * cos - y1 * sin,
+								y1Final = y1 * cos + x1 * sin;
+							//位置是相对于系统中心点，不是最终位置，是物体A的原始位置，需要对A的位置相加得到真正的坐标位置							
+							b.x = a.x + x1Final;//计算B，使用A的原始位置，而不是更新后的位置
+							b.y = a.y + y1Final;
+							a.x = a.x + x0Final;//再计算A
+							a.y = a.y + y0Final;
+							/*把速度旋转归位*/
+							a.vx = vx0 * cos - vy0 * sin;
+							a.vy = vy0 * cos + vx0 * sin;
+							b.vx = vx1 * cos - vy1 * sin;
+							b.vy = vy1 * cos + vx1 * sin;
+						}
+					}
+					Ball.check = check;
+					function move(ball){
+						if(ball.x + ball.radius > canvas.width){
+							ball.x = canvas.width - ball.radius;
+							ball.vx *= bounce;
+						}
+						else if(ball.x - ball.radius < 0){
+							ball.x = ball.radius;
+							ball.vx *= bounce;
+						}
+						if(ball.y + ball.radius > canvas.height){
+							ball.y = canvas.height - ball.radius;
+							ball.vy *= bounce;
+						}
+						else if(ball.y - ball.radius < 0){
+							ball.y = ball.radius;
+							ball.vy *= bounce;
+						}
+					}
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						/*ball0.x += ball0.vx;
+						ball0.y += ball0.vy;
+						ball1.x += ball1.vx;
+						ball1.y += ball1.vy;
+						move(ball0);
+						move(ball1);
+						check(ball0, ball1);
+						ball0.draw(context);
+						ball1.draw(context);*/
+						
+						balls.forEach(function(ball, index){
+							ball.x += ball.vx;
+							ball.y += ball.vy;
+							move(ball);
+							for(var j = index + 1; j < balls.length; j++){
+								check(ball, balls[j]);//碰撞处理
+							}							
+							ball.draw(context);
+						});
+					})();
+				})(document.getElementById("billiardCollsiion"));
+				/*
+				 * 万有引力（粒子）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						particles = [];
+					for(var i = 0; i < 50; i++){
+						var mass = Math.random() * 20 + 5;
+						var particle = new Ball(mass);
+						particle.setColor("rgb(" + (Math.random() * 255 & 0xff) + "," + (Math.random() * 255 & 0xff) + "," + (Math.random() * 255 & 0xff) + ")");
+						particle.mass = mass;
+						particle.x = Math.random() * canvas.width;
+						particle.y = Math.random() * canvas.height;
+						particles.push(particle);
+					}
+					function move(particle, index){
+						particle.x += particle.vx;
+						particle.y += particle.vy;
+						for(var j = index + 1; j < particles.length; j++){
+							Ball.check(particle, particles[j]);
+							gravitate(particle, particles[j]);
+						}
+					}
+					function gravitate(a, b){
+						var dx = b.x - a.x,
+							dy = b.y - a.y;//计算两个粒子间的距离
+						var sqrt = dx * dx + dy * dy;//计算距离的平方
+						var distance = Math.sqrt(sqrt);
+						var force = a.mass * b.mass / sqrt;//引力公式
+						/*计算总引力*/
+						//用dx / distance代替Math.cos(angle)，用dy / distance代替Math.sin(angle)，这样就不用先计算Math.atan2来求出角度
+						var ax = force * (dx / distance);//用两个粒子质量的乘积除以距离的平方得到总引力
+						var ay = force * (dy / distance);
+						/*x和y轴上的总加速度*/
+						a.vx += ax / a.mass;
+						a.vy += ay / a.mass;
+						b.vx -= ax / b.mass;//注意，物体B减去加速度，是因为计算dx和dy相减的顺序，找出相互引力，不然会碰撞在一起
+						b.vy -= ay / b.mass;
+					}
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						particles.forEach(function(particle, index){
+							move(particle, index);
+							particle.draw(context);
+						});
+					})();
+				})(document.getElementById("gravity"));
+				/*
+				 * 万有引力（轨道运动）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						sun = new Ball(100),
+						planet = new Ball(10);
+					sun.x = canvas.width / 2;
+					sun.y = canvas.height / 2;
+					sun.mass = 10000;
+					sun.setColor("#ff0");
+					planet.x = canvas.width / 2 + 200;
+					planet.y = canvas.height / 2;
+					planet.vy = 7;
+					planet.mass = 1;
+					planet.setColor("#0f0");
+					function move(planet, sun){
+						planet.x += planet.vx;
+						planet.y += planet.vy;
+						Ball.check(planet, sun);
+						gravitate(planet, sun);
+					}
+					function gravitate(planet, sun){
+						var dx = sun.x - planet.x,
+							dy = sun.y - planet.y,
+							sqrt = dx * dx + dy * dy,
+							distance = Math.sqrt(sqrt);
+						var force = planet.mass * sun.mass / sqrt,
+							ax = force * dx / distance,
+							ay = force * dy / distance;
+
+						planet.vx += ax / planet.mass;
+						planet.vy += ay / planet.mass;
+						sun.vx -= ax / sun.mass;
+						sun.vy -= ay / sun.mass;
+					}
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						context.save();
+						context.beginPath();
+						context.arc(sun.x, sun.y,  sun.radius + 100, 0, Math.PI * 2, false);
+						context.stroke();
+						context.restore();
+
+						move(planet, sun);
+
+						sun.draw(context);
+						planet.draw(context);
+					})();
+				})(document.getElementById("orbit"));
+				/*
+				 * 万有引力（弹力节点）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						particles = [];
+					var MIN_DISTANCE = 100;
+					var springLength = 0.005;//弹力大小
+
+					for(var i = 0; i < 20; i++){
+						var mass = Math.random() * 10 + 2;
+						var particle = new Ball(mass);
+						particle.x = Math.random() * canvas.width;
+						particle.y = Math.random() * canvas.height;
+						particle.vx = Math.random() * 6 - 3;
+						particle.vy = Math.random() * 6 - 3;
+						particle.mass = mass;
+						particle.setColor("#fff");
+						particles.push(particle);
+					}
+					function move(particle, index){
+						particle.x += particle.vx;
+						particle.y += particle.vy;
+
+						if(particle.x > canvas.width){
+							particle.x = 0;
+						}
+						else if(particle.x < 0){
+							particle.x = canvas.width;
+						}
+						if(particle.y > canvas.height){
+							particle.y = 0;
+						}
+						else if(particle.y < 0){
+							particle.y = canvas.height;
+						}
+
+						for(var j = index + 1; j < particles.length; j++){
+							spring(particle, particles[j]);
+						}
+					}
+					function spring(a, b){
+						var dx = b.x - a.x,
+							dy = b.y - a.y,
+							distance = Math.sqrt(dx * dx + dy * dy);
+						//当达到最小距离形成弹力
+						if(distance < MIN_DISTANCE){
+							var ax = dx * springLength,
+								ay = dy * springLength;
+							var alpha = 1 - distance / MIN_DISTANCE;
+							//distance除以MIN_DISTANCE得到0~到1之间，当distance等于MIN_DISTANCE时，alpha是1，当distance接近0时，alpha是0，用1减去这个值，逆转alpha
+							context.strokeStyle = "rgba(255,255,255," + (alpha) + ")";
+							context.beginPath();
+							context.moveTo(a.x, a.y);
+							context.lineTo(b.x, b.y);
+							context.stroke();
+
+							a.vx += ax / a.mass;
+							a.vy += ay / a.mass;
+							b.vx -= ax / b.mass;
+							b.vy -= ay / b.mass;//大一些的物体得到更多的惯性
+						}
+					}
+					context.fillStyle = "#000";
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						particles.forEach(function(particle, index){
+							move(particle, index);
+							particle.draw(context);
+						});
+					})();
+				})(document.getElementById("springNode"));
+				/*
+				 * 矩阵旋转
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						ball = new Ball(20),
+						balls = [];
+					var angleX = 0;
+					var angleY = 0;
+					var fl = 250;
+					var vpX = canvas.width / 2;
+					var vpY = canvas.height / 2;
+
+					for (var ball, i = 0; i < 10; i++) {
+						ball = new Ball(15);
+						ball.xpos = Math.random() * 200 - 100;
+						ball.ypos = Math.random() * 200 - 100;
+						ball.zpos = Math.random() * 200 - 100;
+						balls.push(ball);
+					}
+
+					function matrixMultiply(position, matrix){
+						return [
+							position[0] * matrix[0][0] + position[1] * matrix[1][0] + position[2] * matrix[2][0],
+							position[0] * matrix[0][1] + position[1] * matrix[1][1] + position[2] * matrix[2][1],
+							position[0] * matrix[0][2] + position[1] * matrix[1][2] + position[2] * matrix[2][2]
+						];
+					}
+					function rotateX(ball, angle){
+						var sin = Math.sin(angle),
+							cos = Math.cos(angle);
+						var matrix = [
+							[1,   0,    0],
+							[0,  cos, sin],
+							[0, -sin, cos]
+						];
+						var result = matrixMultiply([ball.xpos, ball.ypos, ball.zpos], matrix);
+						ball.xpos = result[0];
+						ball.ypos = result[1];
+						ball.zpos = result[2];
+					}
+					function rotateY(ball, angle){
+						var sin = Math.sin(angle),
+							cos = Math.cos(angle);
+						var matrix = [
+							[cos, 0,  sin],
+							[0,   1,    0],
+							[-sin, 0, cos]
+						];
+						var result = matrixMultiply([ball.xpos, ball.ypos, ball.zpos], matrix);
+						ball.xpos = result[0];
+						ball.ypos = result[1];
+						ball.zpos = result[2];
+					}
+					function move(ball){		
+						if(ball.zpos > -fl){
+							var scale = fl / (fl + ball.zpos);
+							ball.scaleX = scale;
+							ball.scaleY = scale;
+							ball.x = vpX + ball.xpos * scale;
+							ball.y = vpY + ball.ypos * scale;
+						}
+					}
+					canvas.addEventListener("mousemove", function(e){
+						context.clearRect(0, 0, canvas.width, canvas.height);
+						var x, y;
+						if(e.pageX || e.pageY){
+							x = e.pageX;
+							y = e.pageY;
+						}
+						else{
+							x = e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+							y = e.clientY + document.body.scrollTop, document.documentElement.scrollTop;
+						}
+						x -= canvas.offsetLeft;
+						y -= canvas.offsetTop;
+
+						angleX = (y - vpY) * 0.001;
+						angleY = (x - vpX) * 0.001;
+
+						balls.forEach(function(ball){
+							rotateY(ball, angleX);
+							rotateX(ball, angleY);
+							move(ball);
+							ball.draw(context);
+						});
+					}, false);
+				})(document.getElementById("matrixRotate"));
+				/*
+				 * 矩阵transform旋转
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						angle = 0;
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						angle += 0.03;
+						var cos = Math.cos(angle),
+							sin = Math.sin(angle),
+							dx = canvas.width / 2,
+							dy = canvas.height / 2;
+						context.save();
+						context.fillStyle = "red";
+						context.transform(cos, sin, -sin, cos, dx, dy);
+						context.fillRect(-50, -50, 100, 100);
+						context.restore();
+					})();
+				})(document.getElementById("matrixTransform"));
+				/*
+				 * 矩阵transform倾斜
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						mouse = {x: 0, y: 0};
+					canvas.addEventListener("mousemove", function(e){
+						context.clearRect(0, 0, canvas.width, canvas.height);
+						var x, y;
+						if(e.pageX || e.pageY){
+							x = e.pageX;
+							y = e.pageY;
+						}
+						else{
+							x = e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+							y = e.clientY + document.body.scrollTop, document.documentElement.scrollTop;
+						}
+						x -= canvas.offsetLeft;
+						y -= canvas.offsetTop;
+						mouse.x = x;
+						mouse.y = y;
+					}, false);
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+
+						var skewX = (mouse.x - canvas.width / 2) * 0.01,
+							skewY = (mouse.y - canvas.height / 2) * 0.01,
+							dx = canvas.width / 2,
+							dy = canvas.height / 2;
+						context.save();
+						context.fillStyle = "red";
+						context.transform(1, skewY, skewX, 1, dx, dy);
+						context.fillRect(-50, -50, 100, 100);
+						context.restore();
+					})();
+				})(document.getElementById("matrixTransformSkew"));
+			}, false);
+		</script>
+	</head>
+	<body>
+		<canvas id="simpleRotate" width="400" height="400"></canvas>
+		<canvas id="multiRotate" width="600" height="400"></canvas>
+		<canvas id="collisionSpring" width="600" height="400"></canvas>
+		<canvas id="multiCollision" width="600" height="400"></canvas>
+		<canvas id="angleBounce" width="600" height="400"></canvas>
+		<canvas id="billiard" width="600" height="400"></canvas>
+		<canvas id="billiardCollsiion" width="600" height="400"></canvas>
+		<canvas id="gravity" width="600" height="400"></canvas>
+		<canvas id="orbit" width="700" height="400"></canvas>
+		<canvas id="springNode" width="600" height="400"></canvas>
+		<canvas id="matrixRotate" width="600" height="400"></canvas>
+		<canvas id="matrixTransform" width="600" height="400"></canvas>
+		<canvas id="matrixTransformSkew" width="600" height="400"></canvas>
+	</body>
+</html>

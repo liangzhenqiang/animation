@@ -1,0 +1,391 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>弹动</title>
+		<style>
+			html, body{padding:0; margin:0;}
+			.graphic:after{content:"."; display:block; visibility:hidden; clear:both; font-size:0; height:0;}
+			.graphic canvas{width:900px; height:400px; float:left; display:block;}
+		</style>
+		<script>
+			function Ball(radius){
+				this.radius = radius || 40;
+				this.x = 0;
+				this.y = 0;
+				this.vx = 0;
+				this.vy = 0;
+				this.rotation = 0;
+				this.scaleX = 1;
+				this.scaleY = 1;
+				this.draw = function(context){
+					context.save();
+					context.translate(this.x, this.y);
+					context.rotate(this.rotation);
+					context.scale(this.scaleX, this.scaleY);
+					context.lineWidth = 1;
+					context.fillStyle = "#f00";
+					context.beginPath();
+					//arc
+					context.arc(0, 0, this.radius, 0, Math.PI * 2, true);
+					context.closePath();
+					context.fill();
+					//context.stroke();
+					context.restore();
+				};
+			}
+			/*
+			 * 计算矩形边界
+			 */
+			function getBounds(x, y, radius){
+				return {
+					"x": x - radius,
+					"y": y - radius,
+					"width": radius * 2,
+					"height": radius * 2 
+				};
+			}
+			/*
+			 * 坐标位置是否在矩形内
+			 */
+			function containsPoint(rect, x, y){
+				return !(
+					x < rect.x ||
+					x > rect.x + rect.width ||
+					y < rect.y ||
+					y > rect.y + rect.height
+				);
+			}
+			document.addEventListener("DOMContentLoaded", function(){
+				/*
+				 * 多个目标点的弹动
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d");
+					var mouse = {"x": 0, "y": 0};
+					var moving = false;
+
+					canvas.addEventListener("mousemove", function(e){
+						var x, y;
+						if(e.pageX || e.pageY){
+							x = e.pageX;
+							y = e.pageY;
+						}
+						else{
+							x = e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+							y = e.clientY + document.body.scrollTop, document.documentElement.scrollTop;
+						}
+						x -= canvas.offsetLeft;
+						y -= canvas.offsetTop;
+						mouse.x = x;
+						mouse.y = y;
+					}, false);
+					(function(){
+						var balls = [];
+						var mainBall = new Ball(20);//主Ball
+						var movingBall = null;//移动中的Ball
+						
+						var friction = 0.9;
+						var spring = 0.03;
+
+						for(var i = 0; i < 3; i++){
+							var ball = new Ball(10);
+							ball.x = Math.random() * canvas.width;
+							ball.y = Math.random() * canvas.height;
+							balls.push(ball);
+						}
+						canvas.addEventListener("mousedown", function(){
+							balls.forEach(function(ball){
+								if(containsPoint(getBounds(ball.x, ball.y, ball.radius), mouse.x, mouse.y)){
+									console.log(ball);
+									movingBall = ball;
+								}
+							});
+						}, false);
+						canvas.addEventListener("mouseup", function(){
+							if(movingBall)
+								movingBall = null;
+						}, false);
+						canvas.addEventListener("mousemove", function(){
+							if(movingBall){
+								movingBall.x = mouse.x;
+								movingBall.y = mouse.y;
+							}
+						}, false);
+
+						(function drawFrame(){
+							requestAnimationFrame(drawFrame, canvas);
+							context.clearRect(0, 0, canvas.width, canvas.height);
+
+							context.beginPath();
+							balls.forEach(function(ball){
+								var dx = ball.x - mainBall.x,
+									dy = ball.y - mainBall.y;
+								mainBall.vx += dx * spring;
+								mainBall.vy += dy * spring;
+
+								context.moveTo(mainBall.x, mainBall.y);
+								context.lineTo(ball.x, ball.y);
+								context.stroke();
+								ball.draw(context);
+							});
+
+							mainBall.vx *= friction;
+							mainBall.vy *= friction;
+							mainBall.x += mainBall.vx;
+							mainBall.y += mainBall.vy;
+
+							mainBall.draw(context);
+						})();
+					})();
+				})(document.getElementById("multiSpring"));
+				/*
+				 * 多个物体连接弹动（目标偏移量）
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						balls = [];
+
+					var springLength = 150;//目标距离
+					var spring = 0.03;
+					var friction = 0.9;
+
+					for(var i = 0; i < 4; i++){
+						var ball = new Ball(20);
+						ball.x = Math.random() * canvas.width;
+						ball.y = Math.random() * canvas.height;
+						balls.push(ball);
+					}
+
+					var mouse = {"x": 0, "y": 0};
+					canvas.addEventListener("mousemove", function(e){
+						var x, y;
+						if(e.pageX || e.pageY){
+							x = e.pageX;
+							y = e.pageY;
+						}
+						else{
+							x = e.clientX + document.body.scrollLeft + document.documentElement.scrollLeft;
+							y = e.clientY + document.body.scrollTop, document.documentElement.scrollTop;
+						}
+						x -= canvas.offsetLeft;
+						y -= canvas.offsetTop;
+						mouse.x = x;
+						mouse.y = y;
+					}, false);
+					canvas.addEventListener("mousedown", function(){
+						balls.forEach(function(ball){
+							if(containsPoint(getBounds(ball.x, ball.y, ball.radius), mouse.x, mouse.y)){
+								ball.draging = true;
+								console.log(ball);
+							}
+						});
+					}, false);
+					canvas.addEventListener("mouseup", function(){
+						balls.forEach(function(ball){
+							ball.draging = false;
+						});
+					}, false);
+					canvas.addEventListener("mousemove", function(){
+						balls.forEach(function(ball){
+							if(ball.draging){
+								ball.x = mouse.x;
+								ball.y = mouse.y;
+							}
+						});
+					}, false);
+					//目标点弹动
+					function springTo(a, b){
+						var dx = b.x - a.x,
+							dy = b.y - a.y,
+							angle = Math.atan2(dy, dx),
+							targetX = b.x - Math.cos(angle) * springLength,
+							targetY = b.y - Math.sin(angle) * springLength;
+						a.vx += (targetX - a.x) * spring;
+						a.vy += (targetY - a.y) * spring;
+						a.vx *= friction;//摩擦力
+						a.vy *= friction;
+						a.x += a.vx;
+						a.y += a.vy;
+					}
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.clearRect(0, 0, canvas.width, canvas.height);
+						context.beginPath();
+						for(var i = 0, len = balls.length; i < len; i++){
+							context.moveTo(balls[i].x, balls[i].y);
+							if(i + 1 <= len - 1){
+								if(!balls[i].draging)
+									springTo(balls[i], balls[i + 1]);
+								if(!balls[i + 1].draging)
+								springTo(balls[i + 1], balls[i]);
+								context.lineTo(balls[i + 1].x, balls[i + 1].y);
+							}
+							context.stroke();
+							balls[i].draw(context);
+						}
+					})();					
+				})(document.getElementById("doubleSpring"));
+				/*
+				 * 弹性碰撞
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						centerBall = new Ball(20),
+						balls = [];
+					centerBall.x = canvas.width / 2;
+					centerBall.y = canvas.height / 2;
+
+					var spring = 0.03;
+					var bounce = -1;
+
+					for(var i = 0; i < 10; i++){
+						var ball = new Ball(10);
+						ball.vx = Math.random() * 6 - 3;
+						ball.vy = Math.random() * 6 - 3;
+						ball.x = Math.random() * canvas.width / 2;
+						ball.y = Math.random() * canvas.height / 2;
+						balls.push(ball);
+					}
+					function draw(ball){
+						var dx = ball.x - centerBall.x,
+							dy = ball.y - centerBall.y,
+							distance = Math.sqrt(dx * dx + dy * dy);
+						var minDistance = ball.radius + centerBall.radius;
+						if(distance < minDistance){
+							var angle = Math.atan2(dy, dx),
+								tx = centerBall.x + Math.cos(angle) * minDistance,
+								ty = centerBall.y + Math.sin(angle) * minDistance;
+							ball.vx += (tx - ball.x) * spring;
+							ball.vy += (ty - ball.y) * spring;
+							ball.vx *= 0.05;
+							ball.vy *= 0.05;			
+						}
+						ball.draw(context);
+					}
+					function move(ball){
+						ball.x += ball.vx;
+						ball.y += ball.vy;
+						if(ball.x + ball.radius > canvas.width){
+							ball.x = canvas.width - ball.radius;
+							ball.vx *= bounce;
+						}
+						else if(ball.x - ball.radius < 0){
+							ball.x = ball.radius;
+							ball.vx *= bounce;
+						}
+						if(ball.y + ball.radius > canvas.height){
+							ball.y = canvas.height - ball.radius;
+							ball.vy *= bounce;
+						}
+						else if(ball.y - ball.radius < 0){
+							ball.y = ball.radius;
+							ball.vy *= bounce;
+						}
+					}
+					context.fillStyle = "#EEE";
+					//draw
+					(function drawFrame(){
+						requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						balls.forEach(function(ball){
+							draw(ball);
+							move(ball);
+						});
+
+						centerBall.draw(context);
+					})();
+				})(document.getElementById("collisionSpring"));
+				/*
+				 * 多物体碰撞
+				 */
+				(function(canvas){
+					var context = canvas.getContext("2d"),
+						balls = [],
+						raf;
+
+					var spring = 0.03;
+					var bounce = -1;
+					var gravity = 0.1;
+
+					for(var i = 0; i < 3; i++){
+						var ball = new Ball(10);
+						ball.vx = Math.random() * 6 - 3;
+						ball.vy = Math.random() * 6 - 3;
+						ball.x = Math.random() * canvas.width / 2;
+						ball.y = Math.random() * canvas.height / 2;
+						balls.push(ball);
+					}
+					context.fillStyle = "#EEE";
+					function check(ball, index){
+						//index = n!
+						for(var j = index + 1; j < balls.length; j++){
+							var nextBall = balls[j];
+							var dx = nextBall.x - ball.x,
+								dy = nextBall.y - ball.y,
+								distance = Math.sqrt(dx * dx + dy * dy),
+								minDistance = ball.radius + nextBall.radius;
+							if(distance < minDistance){
+								console.log(distance);
+								cancelAnimationFrame(raf);
+								var angle = Math.atan2(dy, dx),
+									tx = ball.x + Math.cos(angle) * minDistance,
+									ty = ball.y + Math.sin(angle) * minDistance,
+									ax = (tx - nextBall.x) * spring * 0.5,
+									ay = (ty - nextBall.y) * spring * 0.5;
+								ball.vx -= ax;
+								ball.vy -= ay;
+								nextBall.vx += ax;
+								nextBall.vy += ay;
+							}
+						}
+					}
+					function draw(ball){
+						ball.draw(context);
+					}
+					function move(ball){
+						//ball.vx += gravity;
+						ball.x += ball.vx;
+						ball.y += ball.vy;
+
+						if(ball.x + ball.radius > canvas.width){
+							ball.x = canvas.width - ball.radius;
+							ball.vx *= bounce;
+						}
+						else if(ball.x - ball.radius < 0){
+							ball.x = ball.radius;
+							ball.vx *= bounce;
+						}
+						if(ball.y + ball.radius > canvas.height){
+							ball.y = canvas.height - ball.radius;
+							ball.vy *= bounce;
+						}
+						else if(ball.y - ball.radius < 0){
+							ball.y = ball.radius;
+							ball.vy *= bounce;
+						}
+					}
+					//draw
+					(function drawFrame(){
+						raf = requestAnimationFrame(drawFrame, canvas);
+						context.fillRect(0, 0, canvas.width, canvas.height);
+
+						balls.forEach(function(ball, index){
+							check(ball, index);
+							draw(ball);
+							move(ball);
+						});
+					})();
+				})(document.getElementById("multiCollision"));
+			}, false);
+		</script>
+	</head>
+	<body>
+		<canvas id="multiSpring" width="400" height="400"></canvas>
+		<canvas id="doubleSpring" width="600" height="400"></canvas>
+		<canvas id="collisionSpring" width="600" height="400"></canvas>
+		<canvas id="multiCollision" width="600" height="400"></canvas>
+	</body>
+</html>
