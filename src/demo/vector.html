@@ -1,0 +1,436 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Vector</title>
+		<script type="text/javascript">
+			(function(window){
+				"use strict";
+				(function(exports){
+					var vec = function(x, y, z){
+						this.x = x || 0;
+						this.y = y || 0;
+						this.z = z || 0;
+					};
+
+					vec.create = function(target){
+						var source = new (typeof Float32Array !== "undefined" ? Float32Array : Array)(2);
+						source[0] = target[0];
+						source[1] = target[1];
+						return source;
+					};
+					vec.sub = function(v1, v2){
+						return new vec(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z);
+					};
+					vec.prototype = {
+						add: function(v, y, z){
+							if(arguments.length == 1){
+								this.x += v.x;
+								this.y += v.y;
+								this.z += v.z;
+							}
+							else{
+								this.x += v;
+								this.y += y;
+								this.z += z;
+							}
+						},
+						sub: function(v, y, z){
+							if(arguments.length == 1){
+								this.x -= v.x;
+								this.y -= v.y;
+								this.z -= v.z;
+							}
+							else{
+								this.x -= v;
+								this.y -= y;
+								this.z -= z;
+							}
+						},
+						multiply: function(v){
+							if(typeof v === "number"){
+								this.x *= v;
+								this.y *= v;
+								this.z *= v;
+							}
+							else{
+								this.x *= v.x;
+								this.y *= v.y;
+								this.z *= v.z;
+							}
+						},
+						div: function(v){
+							if(typeof v === "number"){
+								v = 1 / v;
+							}
+							else{
+								v.x = 1 / v.x;
+								v.y = 1 / v.y;
+								v.z = 1 / v.z;
+							}
+							this.multiply(v);
+						},
+						length: function(){
+							var x = this.x,
+								y = this.y,
+								z = this.z;
+							return Math.sqrt(x * x + y * y + z * z);
+						},
+						normalize: function(){
+							var x = this.x,
+								y = this.y,
+								z = this.z;
+							var length = x * x + y * y + z * z;
+							if(length > 0){
+								length = 1 / Math.sqrt(length);//只有方向
+								this.x *= length;
+								this.y *= length;//分量相除
+								this.z *= length;
+							}
+						},
+						limit: function(max){
+							if(this.length() > max){
+								this.normalize();
+								this.multiply(max);
+							}
+						},
+						get: function(){
+							return new vec(this.x, this.y, this.z);
+						}
+					};
+					//
+					exports.vec = vec;
+				})(window);
+			})(window);
+		</script>
+		<script>
+			document.addEventListener("DOMContentLoaded", function(){
+				var canvas = document.getElementById("vis"),
+					context = canvas.getContext("2d");
+				var width = canvas.width,
+					height = canvas.height;
+				function clamp(value, min, max){
+					return value > max ? max : value < min ? min : value;
+				}
+
+				/*canvas.addEventListener("click", function(e){
+					var bbox = this.getBoundingClientRect();
+					var mouse = {
+						x: (e.pageX - bbox.left),// * (this.width / bbox.width),
+						y: (e.pageY - bbox.top)// * (this.height / bbox.height)
+					}
+					
+
+					var location = new vec(mouse.x, mouse.y, 0),
+						center = new vec(width / 2, height / 2, 0);
+					location.add(center);
+					location.normalize();
+					//console.log(location)
+					location.multiply(150);
+
+					//console.log(mouse, location);
+					context.clearRect(0, 0, width, height);//将一个向量单位化，就是使它的方向保持不变，但长度变为1，这样的向量称为单位向量。要单位化一个向量，只需将它的每个分量除以它的长度，由于单位向量描述了一个向量的方向，又不用关心长度。
+					//context.translate(width / 2, height / 2);
+					context.beginPath();
+					context.arc(center.x, center.y, 5, 0, Math.PI * 2);
+					context.moveTo(center.x, center.y);
+					context.lineTo(location.x, location.y);
+
+					context.fillRect(0, 0, Math.abs(location.length() - center.x), 10);//vector size
+					context.stroke();
+				}, false);*/
+				function Mover(x, y, mass){
+					this.mass = mass || 1;//质量
+					this.velocity = new vec(0, 0);//方向
+					this.acceleration = new vec(0, 0);//加速度
+					this.location = new vec(x, y);
+				}
+				Mover.prototype = {
+					applyForce: function(force){
+						var f = force.get();
+						f.div(this.mass);
+						this.acceleration.add(f);//将力除以质量，再加上加速度
+					},
+					update: function(){
+						//console.log(this)
+						this.velocity.add(this.acceleration);
+						this.location.add(this.velocity);
+						this.acceleration.multiply(0);//将加速度清零
+					},
+					checked: function(width, height){
+						var p = this.location;
+						if(p.x > width){
+							p.x = width;
+							this.velocity.x *= -1;
+						}
+						else if(p.x < 0){
+							p.x = 0;
+							this.velocity.x *= -1;
+						}
+						if(p.y > height){
+							p.y = height;
+							this.velocity.y *= -1;
+						}
+					},
+					drag: function(c){
+						var speed = this.velocity.length();
+						var force = c * speed * speed;//力的大小，c是阻力系数，速度的平方*阻力
+						var drag = this.velocity.get();
+
+						drag.multiply(-1);
+						drag.normalize();
+						drag.multiply(force);
+						this.applyForce(drag);
+					}
+				};
+				
+				//加速度
+				(function(){
+					var location = new vec(width / 4, height / 4),
+						velocity = new vec(0, 0),
+						acceleration = new vec(-0.01, 0.01);//方向
+
+					(function frame(){
+						velocity.add(acceleration);
+						velocity.limit(10);
+						location.add(velocity);
+						//console.log(location);
+
+						context.clearRect(0, 0, width, height);
+						context.beginPath();
+						context.arc(location.x, location.y, 10, 0, Math.PI * 2);
+						context.fill();
+
+						requestAnimationFrame(frame);
+					});//();
+
+					//目标位置加速度
+					(function(){
+						canvas.addEventListener("click", function(e){
+							var bbox = this.getBoundingClientRect();
+							var mouse = {
+								x: (e.pageX - bbox.left),// * (this.width / bbox.width),
+								y: (e.pageY - bbox.top)// * (this.height / bbox.height)
+							}
+							var location = new vec(0, 0);
+								dir = new vec(mouse.x, mouse.y),
+								velocity = new vec(0, 0);
+							dir.sub(location);
+							dir.normalize();
+							dir.multiply(0.5);
+
+							(function frame(){
+								velocity.add(dir);
+								velocity.limit(10);
+								location.add(velocity);
+							
+								//console.log(location);
+								if(location.y > mouse.y)
+									return;
+								context.clearRect(0, 0, width, height);
+
+								context.beginPath();
+								context.arc(location.x, location.y, 10, 0, Math.PI * 2);
+								context.fill();
+								requestAnimationFrame(frame);
+							})();
+						});
+
+					})();
+				})();
+				//重力
+				(function(){
+					function rnd(min, max){ return min + (max - min) * Math.random(); }
+
+					var vis = document.getElementById("balls"),
+						context = vis.getContext("2d");
+					var width = vis.width, height = vis.height;
+
+					var balls = [];
+					var length = 100;
+					while(length)
+						balls[--length] = new Mover(Math.random() * (width / 1), Math.random() * (height / 1), rnd(1, 2));
+
+					var wind = new vec(0.01, 0);
+					var gravity = new vec(0, 0.1);
+					(function frame(){
+						context.clearRect(0, 0, width, height);
+						for(var i = 0; i < balls.length; i++){
+							var ball = balls[i];
+							var c = 0.01;//摩擦系数
+							var friction = ball.velocity.get();//摩擦力
+							//console.log(friction)
+							friction.multiply(-1);//相反方向
+							friction.normalize();//方向
+							friction.multiply(c);
+
+							ball.applyForce(friction);//应用摩擦力
+							ball.applyForce(wind);//风力
+							ball.applyForce(gravity);//重力
+							ball.update();
+							ball.checked(width, height);
+							context.beginPath();
+							context.arc(ball.location.x, ball.location.y, 5 * ball.mass, 0, Math.PI * 2);
+							context.fill();
+						}
+						requestAnimationFrame(frame);
+					})();
+				})();
+				//空气和流体阻力
+				(function(){
+					function rnd(min, max){ return min + (max - min) * Math.random(); }
+
+					var vis = document.getElementById("ball2"),
+						context = vis.getContext("2d");
+					var width = vis.width, height = vis.height;
+					var balls = [];
+					var length = 10;
+					while(length)
+						balls[--length] = new Mover(Math.random() * (width / 1), 0, rnd(1, 2));
+
+					function isInside(p0, p1){
+						return p0.x > p1.x && p0.x < p1.x + p1.width &&
+							p0.y > p1.y && p0.y < p1.y + p1.height;
+					}
+					;(function frame(){
+						context.clearRect(0, 0, width, height);
+						context.save();
+						context.fillStyle = "rgba(204,204,204, .5)";
+						context.fillRect(0, height - 50, width, height);
+						context.restore();
+						for(var i = 0; i < balls.length; i++){
+							var ball = balls[i];
+							if(isInside(ball.location, {
+								x: 0,
+								y: height - 50,
+								width: width,
+								height: height - height / 4
+							})){
+								ball.drag(0.1);
+								//console.log(ball)
+							}
+							var m = 0.1 * ball.mass;
+							var gravity = new vec(0, m);
+							ball.applyForce(gravity);
+							ball.update();
+							ball.checked(width, height);
+							context.beginPath();
+							context.arc(ball.location.x, ball.location.y, 5 * ball.mass, 0, Math.PI * 2);
+							context.fill();
+						}
+						requestAnimationFrame(frame);
+					})();
+				})();
+				//引力
+				(function(){
+					function rnd(min, max){ return min + (max - min) * Math.random(); }
+
+					var vis = document.getElementById("ball3"),
+						context = vis.getContext("2d");
+					var width = vis.width, height = vis.height;
+					var balls = [];
+					var length = 10;
+					while(length)
+						balls[--length] = new Mover(Math.random() * (width / 1), Math.random() * height, rnd(5, 10));
+
+					var attractor = new Mover(width / 2, height / 2, 10);
+					var ball = new Mover(Math.random() * (width / 2), 50, 5);
+
+					function attract(p0, p1){
+						var G = 0.4,
+							mass = 10;
+						var force = vec.sub(p0, p1);//一个对象指向另一个向量
+						//force.sub(p1.x, p1.y, 0);						
+						var distance = force.length();//向量的长度，两个对象之间的距离
+						distance = clamp(distance, 5, 25);
+						force.normalize();
+						var strength = (G * mass * mass) / (distance * distance);//引力公式
+						force.multiply(strength);
+						return force;
+					}
+					;(function frame(){
+						context.clearRect(0, 0, width, height);
+						// force = attract(attractor.location, ball.location);
+						//console.log(force)
+						/*context.fillStyle = "#f00";
+						context.beginPath();
+						context.arc(attractor.location.x, attractor.location.y, 5 * attractor.mass, 0, Math.PI * 2);
+						context.fill();
+						balls.forEach(function(ball){
+							ball.applyForce(force);
+							ball.update();
+							context.beginPath();
+							context.fillStyle = "#ccc";
+							context.arc(ball.location.x, ball.location.y, ball.mass, 0, Math.PI * 2);
+							context.fill();
+						});*/
+						for(var i = 0; i < balls.length; i++){
+							for(var j = 0; j < balls.length; j++){
+								if(i !== j){
+									var force = attract(balls[j].location, balls[i].location);
+									balls[i].applyForce(force);
+									//console.log(force);
+								}
+							}
+							balls[i].update();
+							context.fillStyle = "#f0f";
+							context.beginPath();
+							//console.log(balls[i].location)
+							context.arc(balls[i].location.x, balls[i].location.y, 5, 0, Math.PI * 2);
+							context.fill();
+						}
+						requestAnimationFrame(frame);
+					})();
+				})();
+				//角速度
+				;(function(){
+					var vis = document.getElementById("ball4"),
+						context = vis.getContext("2d");
+					var width = vis.width, height = vis.height;
+					var w = 50, h = 50,
+						x = 0, y = 0;
+					var angle = 0,//角度
+						velocity = 0,//角速度
+						acceleration = 0.01;//角加速度
+					//var rect = new Mover(x, y, height);
+					var vel = new vec(0, 0);
+					var loc = new vec(0, 0);
+					var mouse = new vec(0, 0);
+					;(function frame(){
+						context.clearRect(0, 0, width, height);
+						context.save();
+						context.fillStyle = "#f0f";
+						context.translate(w / 2, h / 2);
+						context.rotate(angle);
+						context.translate(-w / 2, -h / 2);
+						context.fillRect(x, y, w, h);
+						context.restore();
+						requestAnimationFrame(frame);
+
+						vel.add(mouse);//角度+角加速度
+						loc.add(vel);//位置+角速度
+						acceleration = mouse.x;
+						velocity += acceleration;
+						//velocity = clamp(velocity, -0.1, 0.1);
+						angle += velocity;
+						mouse.multiply(0);
+					})();
+					vis.onmousemove = function(e){
+						mouse.x = 1 / (e.clientX - x);
+					};
+					vis.onmouseout = function(){
+						mouse.x = 0;
+						velocity = 0;
+					};
+				})();
+			}, false);
+		</script>
+	</head>
+	<body>
+		<canvas id="vis" width="950" height="250"></canvas>
+		<canvas id="balls" width="450" height="250"></canvas>
+		<canvas id="ball2" width="450" height="250"></canvas>
+		<canvas id="ball3" width="450" height="250"></canvas>
+		<canvas id="ball4" width="450" height="250"></canvas>
+	</body>
+</html>

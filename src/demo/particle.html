@@ -1,0 +1,228 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Particle</title>
+		<script type="text/javascript">
+			(function(window){
+				"use strict";
+				(function(exports){
+					var vec = function(x, y, z){
+						this.x = x || 0;
+						this.y = y || 0;
+						this.z = z || 0;
+					};
+
+					vec.create = function(target){
+						var source = new (typeof Float32Array !== "undefined" ? Float32Array : Array)(2);
+						source[0] = target[0];
+						source[1] = target[1];
+						return source;
+					};
+					vec.sub = function(v1, v2){
+						return new vec(v1.x - v2.x, v1.y - v2.y, v1.z - v2.z);
+					};
+					vec.prototype = {
+						add: function(v, y, z){
+							if(arguments.length == 1){
+								this.x += v.x;
+								this.y += v.y;
+								this.z += v.z;
+							}
+							else{
+								this.x += v;
+								this.y += y;
+								this.z += z;
+							}
+						},
+						sub: function(v, y, z){
+							if(arguments.length == 1){
+								this.x -= v.x;
+								this.y -= v.y;
+								this.z -= v.z;
+							}
+							else{
+								this.x -= v;
+								this.y -= y;
+								this.z -= z;
+							}
+						},
+						multiply: function(v){
+							if(typeof v === "number"){
+								this.x *= v;
+								this.y *= v;
+								this.z *= v;
+							}
+							else{
+								this.x *= v.x;
+								this.y *= v.y;
+								this.z *= v.z;
+							}
+						},
+						div: function(v){
+							if(typeof v === "number"){
+								v = 1 / v;
+							}
+							else{
+								v.x = 1 / v.x;
+								v.y = 1 / v.y;
+								v.z = 1 / v.z;
+							}
+							this.multiply(v);
+						},
+						length: function(){
+							var x = this.x,
+								y = this.y,
+								z = this.z;
+							return Math.sqrt(x * x + y * y + z * z);
+						},
+						normalize: function(){
+							var x = this.x,
+								y = this.y,
+								z = this.z;
+							var length = x * x + y * y + z * z;
+							if(length > 0){
+								length = 1 / Math.sqrt(length);//只有方向
+								this.x *= length;
+								this.y *= length;//分量相除
+								this.z *= length;
+							}
+						},
+						limit: function(max){
+							if(this.length() > max){
+								this.normalize();
+								this.multiply(max);
+							}
+						},
+						get: function(){
+							return new vec(this.x, this.y, this.z);
+						}
+					};
+					//
+					exports.vec = vec;
+				})(window);
+			})(window);
+		</script>
+		<script type="text/javascript">
+			function clamp(value, min, max){
+				return (value = value || 0) < min ? min : value > max ? max : value;
+			}
+			function rnd(min, max){ return min + (max - min) * Math.random(); }
+
+			document.addEventListener("DOMContentLoaded", function(){
+				(function(){
+					function Particle(source){
+						this.acceleration = new vec(0, 0);
+						this.velocity = new vec(rnd(-1, 1), rnd(-2, 0));
+						this.source = source.get();
+						this.lifespan = 255;
+					}
+					Particle.prototype = {
+						applyForce: function(force){
+							var mass = 1;
+							var f = force.get();
+							f.div(mass);
+							this.acceleration.add(f);
+						},
+						update: function(){
+							this.velocity.add(this.acceleration);
+							this.source.add(this.velocity);
+							this.acceleration.multiply(0);
+							this.lifespan -= 2;
+						},
+						render: function(context){
+							this.update();
+							context.fillStyle = "rgb(255, " + this.lifespan + ", 255)";
+							context.beginPath();
+							context.arc(this.source.x, this.source.y, 8, 0, Math.PI * 2);
+							context.fill();
+						},
+						isDead: function(){
+							return this.lifespan < 0;
+						}
+					};
+					function ParticleSystem(v){
+						this.source = v.get();
+						this.particles = [];
+					}
+					ParticleSystem.prototype = {
+						add: function(){
+							this.particles.push(new Particle(this.source));
+						},
+						applyForce: function(force){
+							this.particles.forEach(function(item){
+								item.applyForce(force);
+							});
+						},
+						applyRepeller: function(repeller){
+							this.particles.forEach(function(item){
+								var force = repeller.repel(item);
+								item.applyForce(force);
+							});
+						},
+						render: function(){
+							var items = this.particles,
+								length = items.length,
+								item;
+							while(true){
+								(item = items[--length]).render(context);
+								if(item.isDead()){
+									items.splice(length, 1);
+								}
+								if(!length)
+									break;
+							}
+						}
+					};
+					function Repeller(x, y){
+						this.source = new vec(x, y);
+					}
+					Repeller.prototype = {
+						repel: function(particle){
+							var strength = 100;
+							//获取力方向
+							var dir = new vec(this.source, particle.source);
+							//获取距离
+							var mag = dir.length();
+							dir.normalize();
+							mag = clamp(mag, 5, 100);
+							//计算大小
+							var force = -1 * strength / (mag * mag);
+							//组合方向和大小
+							dir.multiply(force);
+							return dir;
+						},
+						render: function(context){
+							context.save();
+							context.beginPath();
+							context.arc(this.source.x, this.source.y, 10, 0, Math.PI * 2);
+							context.fill();
+							context.restore();
+						}
+					};
+
+					var vis = document.getElementById("vis"),
+						context = vis.getContext("2d");
+					var width = vis.width,
+						height = vis.height;
+					var ps = new ParticleSystem(new vec(width / 2, 50));
+					var repeller = new Repeller(width / 2 - 20, height / 2);
+
+					(function frame(){
+						context.clearRect(0, 0, width, height);
+						var gravity = new vec(0, 0.1);
+						ps.add();
+						ps.applyForce(gravity);
+						ps.applyRepeller(repeller);
+						ps.render();
+						repeller.render(context);
+						requestAnimationFrame(frame);
+					})();
+				})();
+			});
+		</script>
+	</head>
+	<body>
+		<canvas id="vis" width="960" height="450"></canvas>
+	</body>
+</html>
