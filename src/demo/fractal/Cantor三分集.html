@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Cantor三分集</title>
+		<script>
+			document.addEventListener("DOMContentLoaded", function(){
+				var canvas = document.getElementById("cantor"),
+					context = canvas.getContext("2d");
+				var width = canvas.width,
+					height = canvas.height;
+				var D = 20;//两线距离
+
+				function lineTo(g, x0, y0, x1, y1){
+					g.beginPath();
+					g.moveTo(x0, y0);
+					g.lineTo(x1, y1);
+					g.stroke();
+				}
+				function cantor(g, ax, ay, bx, by){
+					var c = 1;//直线最小长度
+					if(bx - ax < c){
+						lineTo(g, ax, ay, bx, by);
+					}
+					else{
+						lineTo(g, ax, ay, bx, by);
+						var cx = ax + (bx - ax) / 3;//left
+						var dx = bx - (bx - ax) / 3;//right
+						cantor(g, ax, ay + D, cx, ay + D);//left
+						cantor(g, dx, by + D, bx, by + D);//right
+					}
+				}
+
+				cantor(context, 0, 0, width, 0);
+			}, false);
+		</script>
+	</head>
+	<body>
+		<canvas id="cantor" width="960" height="450"></canvas>
+	</body>
+</html>

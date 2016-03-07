@@ -423,6 +423,52 @@
 						velocity = 0;
 					};
 				})();
+				//弹力
+				;(function(){
+					var vis = document.getElementById("spring"),
+						context = vis.getContext("2d");
+					var width = vis.width, height = vis.height;
+
+					function Spring(x, y, length){
+						this.anchor = new vec(x, y);
+						this.length = length;//静止长度
+					}
+					Spring.prototype = {
+						connect: function(target){
+							this.target = target;
+							var k = 0.1;
+							//获取由枢轴指向钟摆的向量
+							var force = vec.sub(target.location, this.anchor);
+							//计算距离和静止长度的差值
+							var mag = force.length();
+							var strength = mag - this.length;
+							//合并大小和方向
+							force.normalize();
+							force.multiply(-1 * k * strength);
+							target.applyForce(force);
+							
+							return this;
+						},
+						render: function(context){
+							context.beginPath();
+							context.arc(this.anchor.x, this.anchor.y, 5, 0, Math.PI * 2);
+							context.moveTo(this.target.location.x, this.target.location.y);
+							context.lineTo(this.anchor.x, this.anchor.y);
+							context.fill();
+							context.stroke();
+							context.beginPath();
+							context.arc(this.target.location.x, this.target.location.y, 10, 0, Math.PI * 2);
+							context.fill();
+						}
+					}
+					var mover = new Mover(width / 2, 100),
+						spring = new Spring(width / 2, 20, 100).connect(mover);
+					(function frame(){
+						context.clearRect(0, 0, width, height);
+						spring.connect(mover).render(context);
+						requestAnimationFrame(frame);
+					})();
+				})();
 			}, false);
 		</script>
 	</head>
@@ -432,5 +478,6 @@
 		<canvas id="ball2" width="450" height="250"></canvas>
 		<canvas id="ball3" width="450" height="250"></canvas>
 		<canvas id="ball4" width="450" height="250"></canvas>
+		<canvas id="spring" width="450" height="250"></canvas>
 	</body>
 </html>

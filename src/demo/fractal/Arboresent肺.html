@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Arboresent肺</title>
+		<script>
+			function lineTo(g, x0, y0, x1, y1){
+				g.beginPath();
+				g.moveTo(x0, y0);
+				g.lineTo(x1, y1);
+				g.stroke();
+			}
+			function arboresent(g, x, y, size, prate, angle, theta, t, depth){
+				var length = size / prate;
+				var ex = x,
+					ey = y;
+				var ax = x + Math.cos(angle) * size,
+					ay = y + Math.sin(angle) * size;
+				var bx = x + Math.cos(angle - theta) * length,
+					by = y + Math.sin(angle - theta) * length;
+				var cx = x + Math.cos(angle - theta - t) * length,
+					cy = y + Math.sin(angle - theta - t) * length;
+				var dx = x + Math.cos(angle - theta * 2 - t) * size,
+					dy = y + Math.sin(angle - theta * 2 - t) * size;
+				if(depth <= 1){
+					lineTo(g, ax, ay, ex, ey);
+					lineTo(g, ex, ey, dx, dy);
+					lineTo(g, dx, dy, cx, cy);
+					lineTo(g, cx, cy, ex, ey);
+					lineTo(g, ex, ey, bx, by);
+					lineTo(g, bx, by, ax, ay);
+				}
+				else{
+					arboresent(g, bx, by, length, prate, angle - theta + Math.PI, theta, t, depth - 1);
+					arboresent(g, cx, cy, length, prate, angle - theta - t + Math.PI, -theta, -t, depth - 1);
+				}
+			}
+			document.addEventListener("DOMContentLoaded", function(){
+				var canvas = document.getElementById("arboresent"),
+					context = canvas.getContext("2d");
+				var width = canvas.width,
+					height = canvas.height;
+				function atn(x){
+					var h = x;
+					var sum = 0;
+					for(var i = 0; i < 101; i++){
+						sum = sum + h / (2 * i + 1);
+						h = -h * x * x;
+					}
+					return sum;
+				}
+				var x = 0,
+					y = 200;
+				var size = 200;
+				var angle = 55 * Math.PI / 180;
+				var prate = 1.5;
+				var theta = atn(Math.sqrt(4 / prate / prate - 1));
+				var t = Math.PI - 4 * theta;
+				var depth = 2;
+
+				arboresent(context, x, y, size, prate, angle, theta, t, depth);//left
+				arboresent(
+					context,
+					x + size * prate * Math.cos(angle - theta - t),
+					y + size * prate * Math.sin(angle - theta - t),
+					size,
+					prate,
+					angle + theta * 2 - t,
+					-theta,
+					-t,
+					depth
+				);//right
+			}, false);
+		</script>
+	</head>
+	<body>
+		<canvas id="arboresent" width="960" height="650"></canvas>
+	</body>
+</html>

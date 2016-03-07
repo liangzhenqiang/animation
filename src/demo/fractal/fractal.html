@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Cantor三分集合</title>
+		<script>
+			document.addEventListener("DOMContentLoaded", function(){
+				//koch
+				(function(){
+					var vis = document.getElementById("koch");
+					var context = vis.getContext("2d");
+					var width = vis.width,
+						height = vis.height;
+
+					var lines = [];
+
+					function KochLine(start, end){
+						this.start = start;
+						this.end = end;
+
+						this.render = function(context){
+							//context.save();
+							context.beginPath();
+							context.moveTo(this.start.x, this.start.y);
+							context.lineTo(this.end.x, this.end.y);
+							context.stroke();
+							//context.restore();
+						};
+					}
+					KochLine.prototype = {
+						kochA: function(){
+							return {x: this.start.x, y: this.start.y };
+						},
+						kochB: function(){
+							var v = {x: this.end.x - this.start.x, y: this.end.y - this.start.y};//vector sub
+							v.x /= 3, v.y /= 3;//vector div
+							v.x += this.start.x, v.y += this.start.y;//vector add
+							return v;
+						},
+						kochC: function(){
+							var a = {x: this.start.x, y: this.start.y};
+							var v = {x: this.end.x - this.start.x, y: this.end.y - this.start.y};
+							v.x /= 3, v.y /= 3;
+							a.x += v.x, a.y += v.y;
+							//vector rotate
+							var prevX = v.x;
+							var angle = -((60 / 180) * Math.PI);
+							var sin = Math.sin(angle),
+								cos = Math.cos(angle);
+							v.x = cos * v.x - sin * v.y;
+							v.y = sin * prevX + cos * v.y;
+							//vector add
+							a.x += v.x, a.y += v.y;
+							return a;
+						},
+						kochD: function(){
+							var v = {x: this.end.x - this.start.x, y: this.end.y - this.start.y};
+							v.x *= 2 / 3, v.y *= 2 / 3;//vector multip
+							v.x += this.start.x, v.y += this.start.y;//vector add
+							return v;
+						},
+						kochE: function(){
+							return {x: this.end.x, y: this.end.y};
+						}
+					}
+
+					function generate(){
+						var next = [];
+						//var line = new KochLine(start, end);
+						lines.forEach(function(line){
+							var a = line.kochA(),
+								b = line.kochB(),
+								c = line.kochC(),
+								d = line.kochD(),
+								e = line.kochE();
+							next.push(new KochLine(a, b));
+							next.push(new KochLine(b, c));
+							next.push(new KochLine(c, d));
+							next.push(new KochLine(d, e));
+						});
+
+						lines = next;
+					}
+					
+					function draw(){						
+						var start = {x: 0, y: 200};
+						var end = {x: width, y: 200};
+						lines.push(new KochLine(start, end));
+
+						for(var i = 0; i < 10; i++){
+							generate();
+						}
+
+						lines.forEach(function(item){
+							item.render(context);
+						});
+					}
+					draw();
+				})();
+			}, false);
+		</script>
+	</head>
+	<body>
+		<canvas id="koch" width="400" height="400"></canvas>
+	</body>
+</html>
