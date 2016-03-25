@@ -1,0 +1,249 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>L-System</title>
+		<script>
+			 document.addEventListener("DOMContentLoaded", function(){
+                function toRadians(angle){ return Math.PI * (angle / 180); }
+                function toDegrees(angle){ return 180 * angle / Math.PI; }
+                function lineTo(g, x0, y0, x1, y1){
+                    g.beginPath();
+                    g.moveTo(x0, y0);
+                    g.lineTo(x1, y1);
+                    g.stroke();
+                }
+                function Stapel(){
+                    this.x = 0;
+                    this.y = 0;
+                    this.angle = 0;
+                    this.nach = 0;
+                    this.vor = 0;
+                }
+                function Turtle(x, y, angle){
+                    this.x = x;
+                    this.y = y;
+                    this.angle = angle;
+                    this.pen = false;//是否画线
+                }
+                Turtle.prototype = {
+                    setXY: function(x, y){
+                        this.x = x;
+                        this.y = y;
+                    },
+                    setAngle: function(angle){
+                        this.angle = angle;
+                    },
+                    drawing: function(f){
+                        this.pen = f;
+                        return this;
+                    },
+                    turn: function(angle){
+                        this.angle += angle;
+                        if(this.angle > 360)
+                            this.angle -= 360;
+                        if(this.angle < 0)
+                            this.angle += 360;
+                    },
+                    move: function(g, r){
+                        var angle = toRadians(this.angle),
+                            x = this.x + Math.cos(angle) * r,
+                            y = this.y + Math.sin(angle) * r;
+                        if(this.pen){
+                            lineTo(g, this.x, this.y, x, y);
+                        }
+                        this.setXY(x, y);
+                    }
+                }
+                function LSystem(context, options){
+                    options = options || {};
+                    this.context = context;
+                    this.x = options.x || 0;
+                    this.y = options.y || 0;
+                    this.height = options.height || 150;
+                    this.width = options.width || 300;
+                    this.size = options.size || 2;
+                    this.angle = options.angle || 60;
+                    this.strings = options.axiom || "F";//初始公理
+                    this.rules = options.rules || "F-F++F-F";//生成规则
+                    this.init(options.depth || 0);
+                }
+                LSystem.prototype = {
+                    init: function(depth){
+                        var strings = this.strings,
+                            rules = this.rules;
+                        this.turtle = new Turtle(this.x, this.y, -90);
+                        //this.turtle.setXY(this.x, this.y);
+                        this.first = new Stapel();
+                        this.last = this.first;
+                        this.first.vor = null;
+                        this.first.nach = null;
+                        
+
+                        for(var z = 0; z < depth; z++){
+                            for(var i = 0; i < strings.length; i++){
+                                if(strings.charAt(i) === "F"){
+                                    var start = strings.substr(0, i),//[0, i)//delete
+                                        end = strings.substr(i + 1);//[i+1, n)
+                                    strings = start + rules + end;//insert
+                                    i = i + rules.length;
+                                    continue;
+                                }
+                            }
+                        }
+                        this.strings = strings;
+
+                        this.render();
+                    },
+                    parse: function(c){
+                        var context = this.context;
+                        var turtle = this.turtle;
+                        switch(c){
+                            case "F"://在当前方向前进一步，画线
+                                turtle.drawing(true).move(context, this.size);
+                            break;
+                            case "f"://在当前方向前进一步，不画线
+                                turtle.drawing(false).move(context, this.size);
+                            break;
+                            case "+"://逆时针旋转
+                                turtle.turn(this.angle);
+                            break;
+                            case "-"://顺时针旋转
+                                turtle.turn(-this.angle);
+                            break;
+                            case "["://压栈
+                                this.last.nach = new Stapel();
+                                this.last.nach.vor = this.last;
+                                this.last = this.last.nach;
+                                this.last.x = turtle.x;
+                                this.last.y = turtle.y;
+                                this.last.angle = turtle.angle;
+                            break;
+                            case "]"://出栈
+                                turtle.setXY(this.last.x, this.last.y);
+                                turtle.setAngle(this.last.angle);
+                                this.last = this.last.vor;
+                                this.last.nach = null;
+                            break;
+                            default:
+                            break
+                        }
+                    },
+                    render: function(){
+                        for(var i = 0; i < this.strings.length; i++){
+                            this.parse(this.strings.charAt(i));
+                        }
+                    }
+                }
+                var options = {
+                    "雪花": {
+                        x: 200,
+                        y: 150,
+                        width: 960,
+                        height: 450,
+                        depth: 4,
+                        size: 3,
+                        angle: 60,
+                        axiom: "F++F++F",
+                        rules: "F-F++F-F-F"
+                    },
+                    "反雪花": {
+                        x: 200,
+                        y: 250,
+                        width: 960,
+                        height: 450,
+                        depth: 4,
+                        size: 3,
+                        angle: 60,
+                        axiom: "F--F--F-",
+                        rules: "F-F++F-F"
+                    },
+                    "止曲线": {
+                        x: 200,
+                        y: 250,
+                        width: 960,
+                        height: 450,
+                        depth: 4,
+                        size: 1.5,
+                        angle: 90,
+                        axiom: "F+F+F+F",
+                        rules: "F+F-F-FFF+F-F"
+                    },
+                    "环形肠": {
+                        x: 50,
+                        y: 250,
+                        width: 960,
+                        height: 450,
+                        depth: 4,
+                        size: 5,
+                        angle: 90,
+                        axiom: "F-F-F-F-",
+                        rules: "FF-F-F-F-F-F+F"
+                    },
+                    "分形树一": {
+                        x: 150,
+                        y: 450,
+                        depth: 6,
+                        size: 3,
+                        angle: 25,
+                        axiom: "F",
+                        rules: "F[-F]F[+F]F"
+                    },
+                    "分形树二": {
+                        x: 150,
+                        y: 450,
+                        depth: 6,
+                        size: 3,
+                        angle: 25,
+                        axiom: "F",
+                        rules: "F[+F]F[-F][F]"
+                    },
+                    "分形树三": {
+                        x: 150,
+                        y: 450,
+                        depth: 5,
+                        size: 3,
+                        angle: 25,
+                        axiom: "F",
+                        rules: "F[+F]F[-F+F]"
+                    },
+                    "分形树四": {
+                        x: 150,
+                        y: 450,
+                        depth: 5,
+                        size: 5,
+                        angle: 20,
+                        axiom: "F",
+                        rules: "FF+[+F-F-F]-[-F+F+F]"
+                    },
+                    "分形树五": {
+                        x: 150,
+                        y: 450,
+                        depth: 6,
+                        size: 6,
+                        angle: 25,
+                        axiom: "F",
+                        rules: "F[-F][+F]F"
+                    },
+                    "分形树六": {
+                        x: 150,
+                        y: 450,
+                        depth: 5,
+                        size: 5,
+                        angle: 20,
+                        axiom: "F",
+                        rules: "F[-F][+F][--F]F[++F]F"
+                    }
+                };
+                new LSystem(
+                    document.getElementById("ls1").getContext("2d"),
+                    options["分形树二"]
+                );
+                //console.log(strings);
+            });
+		</script>
+	</head>
+	<body>
+		<canvas id="ls1" width="960" height="450"></canvas>
+	</body>
+</html>

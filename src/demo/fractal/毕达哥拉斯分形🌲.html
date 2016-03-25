@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>Pythagoras</title>
+		<script>
+			function rescale(g, width, height, ratio){
+				g.canvas.width = width * ratio;
+				g.canvas.height = height * ratio;
+				g.canvas.style.width = width + "px";
+				g.canvas.style.height = height + "px";
+				g.scale(ratio, ratio);
+			}
+			function drawPolygon(g, xcoords, ycoords){
+				g.beginPath();
+				g.moveTo(xcoords[0], ycoords[0]);
+				for(var i = 1; i < xcoords.length; i++)
+					g.lineTo(xcoords[i], ycoords[i]);
+				g.lineTo(xcoords[0], ycoords[0]);
+				g.stroke();
+			}
+			function Pythagoras(context, options){
+				this.canvas = context.canvas;
+				this.context = context;
+				this.options = options || {};
+
+				this.init();
+			}
+			Pythagoras.prototype = {
+				init: function(){
+					var canvas = this.canvas;
+					this.offscreenimage = document.createElement("canvas");
+					this.offscreenimage.width = canvas.width;
+					this.offscreenimage.height = canvas.height;
+					this.offscreenbuffer = this.offscreenimage.getContext("2d");
+
+					var ratio = window.devicePixelRatio || 1;
+					rescale(this.context, this.canvas.width, this.canvas.height, ratio);
+					rescale(this.offscreenbuffer, this.canvas.width, this.canvas.height, ratio);
+					this.force = 0.3;
+					this.status = true;
+
+					var me = this;
+
+					(function frame(){
+						me.animation();
+						requestAnimationFrame(frame);
+					})();
+				},
+				animation: function(){
+					if(this.status){
+						this.force += 0.01;
+						if(this.force >= .6)
+							this.status = false;
+					}
+					else{
+						this.force -= 0.01;
+						if(this.force <= .3)
+							this.status = true;
+					}
+					this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+					this.offscreenbuffer.clearRect(0, 0, this.offscreenimage.width, this.offscreenimage.height);
+					this.offscreenbuffer.fillStyle = "#000";
+
+					this.draw(
+						this.offscreenbuffer,
+						{x: 230, y: -60},
+						{x: 280, y: -60},
+						{x: 280, y: 0},
+						{x: 230, y: 0},
+						this.options.depth || 5,
+						this.force
+					);
+					var w = this.offscreenimage.width,
+						h = this.offscreenimage.height;
+					var ratio = window.devicePixelRatio || 1;
+					this.context.drawImage(this.offscreenimage,
+						0,
+						0,
+						w / ratio,
+						h / ratio);
+				},
+				draw: function(g, a, b, c, d, depth, k){
+					if(depth === 0)
+						return;
+					depth -= 1;
+					var xcoords = [a.x, b.x, c.x, d.x],
+						ycoords = [a.y, b.y, c.y, d.y].map(function(item){ return 300 - item;});
+					drawPolygon(g, xcoords, ycoords);
+
+					var r2 = Math.sqrt(.5 * .5 - (.5 - k) * (.5 - k));
+					var p = {
+						x: d.x + k * (c.x - d.x) + r2 * (a.y - b.y),
+						y: d.y + k * (c.y - d.y) + r2 * (b.x - a.x)
+					};
+					var a1 = d,
+						b1 = p,
+						c1 = {
+							x: b1.x + a1.y - b1.y,
+							y: b1.y + b1.x - a1.x
+						},
+						d1 = {
+							x: a1.x + a1.y - b1.y,
+							y: a1.y + b1.x - a1.x
+						};
+					this.draw(g, a1, b1, c1, d1, depth, k);
+
+					var a2 = p,
+						b2 = c,
+						c2 = {
+							x: b2.x + a2.y - b2.y,
+							y: b2.y + b2.x - a2.x
+						},
+						d2 = {
+							x: a2.x + a2.y - b2.y,
+							y: a2.y + b2.x - a2.x
+						};
+					this.draw(g, a2, b2, c2, d2, depth, k);
+				}
+			};
+			document.addEventListener("DOMContentLoaded", function(){
+				var canvas = document.getElementById("pythagoras"),
+					context = canvas.getContext("2d");
+				var width = canvas.width,
+					height = canvas.height;
+
+				new Pythagoras(context, {
+					depth: 9
+				});
+			});
+		</script>
+	</head>
+	<body>
+		<canvas id="pythagoras" width="960" height="450"></canvas>
+	</body>
+</html>
